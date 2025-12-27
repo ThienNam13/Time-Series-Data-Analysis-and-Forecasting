@@ -10,6 +10,9 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import numpy as np
 from math import sqrt
 
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
 # =========================================================
 # 1. PATH CONFIGURATION
 # =========================================================
@@ -46,6 +49,12 @@ ACF_PATH = os.path.join(LOG_DIR, f"acf_{RUN_TIME}.png")
 PACF_PATH = os.path.join(LOG_DIR, f"pacf_{RUN_TIME}.png")
 ACF_PACF_TXT = os.path.join(LOG_DIR, f"ACF_PACF_Analysis_{RUN_TIME}.txt")
 ZTABLE_PATH = os.path.join(LOG_DIR, f"z_table_{RUN_TIME}.txt")
+# thêm path cho 5. xây dựng mô hình ARIMA
+MODEL_SUMMARY_PATH = os.path.join(LOG_DIR, f"model_summary_{RUN_TIME}.txt")
+FORECAST_PLOT_PATH = os.path.join(LOG_DIR, f"forecast_{RUN_TIME}.png")
+FORECAST_VALUE_PATH = os.path.join(LOG_DIR, f"forecast_values_{RUN_TIME}.txt")
+RESIDUAL_PLOT_PATH = os.path.join(LOG_DIR, f"residuals_{RUN_TIME}.png")
+RESIDUAL_ACF_PATH = os.path.join(LOG_DIR, f"residual_acf_{RUN_TIME}.png")
 
 # =========================================================
 # 2. LOGGING CONFIGURATION
@@ -294,10 +303,99 @@ def analyze_acf_pacf(series: pd.Series, ci_threshold: float):
             f.write("- Không có lag nào vượt ngưỡng → gần giống white noise\n")
 
     logger.info(f"ACF/PACF analysis saved at {ACF_PACF_TXT}")
+# Hàm CHIA TRAIN – TEST (80/20)
+def split_train_test(series: pd.Series, train_ratio=0.8):
+    n = len(series)
+    train_size = int(n * train_ratio)
+
+    train = series.iloc[:train_size]
+    test = series.iloc[train_size:]
+
+    logger.info(f"Train size: {len(train)}, Test size: {len(test)}")
+    return train, test
+# Hàm FIT ARIMA + GHI LOG + SUMMARY
+def fit_arima_model(train, order):
+    logger.info(f"Fitting ARIMA{order} model...")
+    try:
+        model = ARIMA(train, order=order)
+        model_fit = model.fit()
+
+        logger.info("Model fitted successfully")
+        logger.info(f"AIC = {model_fit.aic}, BIC = {model_fit.bic}")
+
+        # Save summary text
+        with open(MODEL_SUMMARY_PATH, "w", encoding="utf-8") as f:
+            f.write(str(model_fit.summary()))
+        
+        logger.info(f"Model summary saved: {MODEL_SUMMARY_PATH}")
+        return model_fit
+
+    except Exception as e:
+        logger.error(f"Failed to fit ARIMA model: {e}")
+        raise
+# FORECAST + LƯU TXT + VẼ
+def forecast_and_plot(train, test, model_fit):
+    forecast = model_fit.forecast(steps=len(test))
+
+    # Save forecast + test values
+    with open(FORECAST_VALUE_PATH, "w", encoding="utf-8") as f:
+        f.write("FORECAST VALUES vs TEST\n")
+        f.write("="*50 + "\n\n")
+        for t, p in zip(test.values, forecast.values):
+            f.write(f"Actual = {t:.4f}   |   Forecast = {p:.4f}\n")
+
+    logger.info(f"Forecast values saved at {FORECAST_VALUE_PATH}")
+
+    # Plot
+    plt.figure(figsize=(10,5))
+    plt.plot(train.index, train, label="Train")
+    plt.plot(test.index, test, label="Test", color="orange")
+    plt.plot(test.index, forecast, label="Forecast", color="green")
+    plt.title("ARIMA Forecast vs Actual (Test Set)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(FORECAST_PLOT_PATH)
+    plt.close()
+
+    logger.info(f"Forecast plot saved → {FORECAST_PLOT_PATH}")
+
+    return forecast
+# RESIDUAL DIAGNOSTICS (vẽ residual, ACF residual, kiểm tra mean ~ 0)
+def residual_diagnostics(model_fit):
+    residuals = model_fit.resid
+
+    # Residual plot
+    plt.figure(figsize=(10,4))
+    plt.plot(residuals)
+    plt.title("Residuals Over Time")
+    plt.tight_layout()
+    plt.savefig(RESIDUAL_PLOT_PATH)
+    plt.close()
+
+    logger.info(f"Residual plot saved → {RESIDUAL_PLOT_PATH}")
+
+    # ACF of residuals
+    plt.figure(figsize=(8,4))
+    plot_acf(residuals.dropna(), lags=40)
+    plt.title("ACF of Residuals")
+    plt.tight_layout()
+    plt.savefig(RESIDUAL_ACF_PATH)
+    plt.close()
+
+    logger.info(f"Residual ACF saved → {RESIDUAL_ACF_PATH}")
+
+    # Mean residual check
+    mean_resid = residuals.mean()
+    logger.info(f"Residual mean = {mean_resid}")
+
+    if abs(mean_resid) < 0.05:
+        logger.info("Residual mean ≈ 0 → GOOD")
+    else:
+        logger.warning("Residual mean far from 0 → BAD")
+
 # =========================================================
 # 4. MAIN PIPELINE
 # =========================================================
-
 def main():
     logger.info(f"Running file: {__file__}")
     logger.info("========== START EDA PIPELINE ==========")
@@ -316,7 +414,7 @@ def main():
     perform_adf_test(diff_series, ADF_DIFF_PATH)
 
     logger.info("=========== END EDA PIPELINE ===========")
-    
+    # Bài 4. ACF và PACF
     logger.info("========== START ACF & PACF ANALYSIS ==========")
 
     plot_acf_pacf(diff_series)
@@ -326,6 +424,33 @@ def main():
     analyze_acf_pacf(diff_series, ci_95)
 
     logger.info("=========== END ACF & PACF ANALYSIS ===========")
+    # Bài 5. Xây mô hình ARIMA
+    logger.info("========== START ARIMA MODELING ==========")
+
+    # Use original series for modeling (not differenced manually)
+    series = df["value"]
+
+    train, test = split_train_test(series)
+
+    # Suggest ARIMA based on Task 4 results
+    arima_order = (1,1,1)
+
+    model_fit = fit_arima_model(train, arima_order)
+
+    forecast = forecast_and_plot(train, test, model_fit)
+
+    # Evaluation
+    mae = mean_absolute_error(test, forecast)
+    mse = mean_squared_error(test, forecast)
+    rmse = np.sqrt(mse)
+
+    logger.info(f"MAE = {mae}")
+    logger.info(f"MSE = {mse}")
+    logger.info(f"RMSE = {rmse}")
+
+    residual_diagnostics(model_fit)
+
+    logger.info("=========== END ARIMA MODELING ===========")
 
 
 if __name__ == "__main__":
