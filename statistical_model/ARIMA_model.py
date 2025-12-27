@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from statsmodels.tsa.stattools import adfuller
 
 # =========================================================
 # 1. PATH CONFIGURATION
@@ -32,6 +33,7 @@ DATA_PATH = os.path.join(DATA_DIR, "a10.csv")
 LOG_FILE = os.path.join(LOG_DIR, f"ARIMA_model_{RUN_TIME}.log")
 PLOT_PATH = os.path.join(LOG_DIR, f"time_series_{RUN_TIME}.png")
 EDA_TEXT_PATH = os.path.join(LOG_DIR, f"eda_summary_{RUN_TIME}.txt")
+STATIONARITY_PATH = os.path.join(LOG_DIR, f"stationarity_test_{RUN_TIME}.txt")
 
 
 # =========================================================
@@ -129,6 +131,53 @@ def write_eda_summary(path: str) -> None:
     logger.info(f"EDA summary written to {path}")
 
 
+def perform_adf_test(series: pd.Series, output_path: str) -> None:
+    """Perform ADF test on a series and write results to a text file."""
+    try:
+        result = adfuller(series.dropna(), autolag='AIC')
+        adf_stat = result[0]
+        p_value = result[1]
+        used_lag = result[2]
+        n_obs = result[3]
+        crit_values = result[4]
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("ADF STATIONARITY TEST – ORIGINAL SERIES\n")
+            f.write("=" * 55 + "\n\n")
+
+            f.write("H0 (null hypothesis): The time series has a unit root (is non-stationary).\n")
+            f.write("H1 (alternative): The time series is stationary.\n\n")
+
+            f.write(f"ADF Statistic: {adf_stat:.6f}\n")
+            f.write(f"p-value: {p_value:.6f}\n")
+            f.write(f"Used lag: {used_lag}\n")
+            f.write(f"Number of observations: {n_obs}\n\n")
+
+            f.write("Critical Values:\n")
+            for key, val in crit_values.items():
+                f.write(f"  {key}: {val:.6f}\n")
+            f.write("\n")
+
+            # Conclusion at 5% significance
+            alpha = 0.05
+            if p_value < alpha:
+                conclusion = "Reject H0 -> The series is stationary (dừng)."
+            else:
+                conclusion = "Fail to reject H0 -> The series is non-stationary (không dừng)."
+
+            f.write(f"Conclusion (alpha = {alpha}): {conclusion}\n\n")
+
+            f.write("Giải thích ngắn gọn:\n")
+            f.write("- H0 của ADF: chuỗi có unit root (không dừng).\n")
+            f.write("- p-value cho biết xác suất quan sát được dữ liệu (hoặc mạnh hơn) khi H0 đúng.\n")
+            f.write("- Nếu p-value nhỏ hơn mức ý nghĩa (ví dụ 0.05) thì bác bỏ H0, tức chuỗi dừng.\n")
+
+        logger.info(f"ADF test results written to {output_path}")
+    except Exception as e:
+        logger.error(f"ADF test failed: {e}")
+        raise
+
+
 # =========================================================
 # 4. MAIN PIPELINE
 # =========================================================
@@ -139,6 +188,7 @@ def main():
     df = load_data(DATA_PATH)
     df = preprocess_data(df)
     plot_time_series(df, PLOT_PATH)
+    perform_adf_test(df["value"], STATIONARITY_PATH)
     write_eda_summary(EDA_TEXT_PATH)
 
     logger.info("=========== END EDA PIPELINE ===========")
