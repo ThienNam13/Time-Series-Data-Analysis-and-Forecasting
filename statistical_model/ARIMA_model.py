@@ -6,6 +6,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.stattools import adfuller
 
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import numpy as np
+from math import sqrt
+
 # =========================================================
 # 1. PATH CONFIGURATION
 # =========================================================
@@ -37,6 +41,11 @@ STATIONARITY_PATH = os.path.join(LOG_DIR, f"stationarity_test_{RUN_TIME}.txt")
 # thêm path cho đồ thị sai phân và kết quả kiểm định ADF sau sai phân
 DIFF_PLOT_PATH = os.path.join(LOG_DIR, f"diff_series_{RUN_TIME}.png")
 ADF_DIFF_PATH = os.path.join(LOG_DIR, f"stationarity_test_diff_{RUN_TIME}.txt")
+# thêm path cho 4. ACF & PACF cho chuỗi đã dừng
+ACF_PATH = os.path.join(LOG_DIR, f"acf_{RUN_TIME}.png")
+PACF_PATH = os.path.join(LOG_DIR, f"pacf_{RUN_TIME}.png")
+ACF_PACF_TXT = os.path.join(LOG_DIR, f"ACF_PACF_Analysis_{RUN_TIME}.txt")
+ZTABLE_PATH = os.path.join(LOG_DIR, f"z_table_{RUN_TIME}.txt")
 
 # =========================================================
 # 2. LOGGING CONFIGURATION
@@ -197,6 +206,94 @@ def plot_diff_series(series: pd.Series, output_path: str) -> None:
     plt.savefig(output_path)
     plt.close()
     logger.info(f"Differenced series plot saved at {output_path}")
+# Thêm hàm vẽ ACF & PACF
+def plot_acf_pacf(series: pd.Series):
+    """Plot ACF & PACF for differenced stationary series"""
+    try:
+        # ACF
+        plt.figure(figsize=(8, 4))
+        plot_acf(series.dropna(), lags=40)
+        plt.title("ACF of Differenced Series (d = 1)")
+        plt.tight_layout()
+        plt.savefig(ACF_PATH)
+        plt.close()
+
+        # PACF
+        plt.figure(figsize=(8, 4))
+        plot_pacf(series.dropna(), lags=40, method="ywm")
+        plt.title("PACF of Differenced Series (d = 1)")
+        plt.tight_layout()
+        plt.savefig(PACF_PATH)
+        plt.close()
+
+        logger.info(f"ACF saved → {ACF_PATH}")
+        logger.info(f"PACF saved → {PACF_PATH}")
+
+    except Exception as e:
+        logger.error(f"Failed to generate ACF/PACF plots: {e}")
+        raise
+# Hàm tính Z-TABLE + CONFIDENCE
+def write_z_table(series: pd.Series):
+    """Compute confidence intervals and export z table."""
+    n = len(series.dropna())
+    z90 = 1.645 / sqrt(n)
+    z95 = 1.96 / sqrt(n)
+    z99 = 2.576 / sqrt(n)
+
+    with open(ZTABLE_PATH, "w", encoding="utf-8") as f:
+        f.write("Z TABLE – CONFIDENCE INTERVALS\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(f"Sample size (n): {n}\n\n")
+        f.write("Confidence Limits:\n")
+        f.write(f"90%  → ±{z90:.6f}\n")
+        f.write(f"95%  → ±{z95:.6f}\n")
+        f.write(f"99%  → ±{z99:.6f}\n")
+
+    logger.info(f"Z-table written to {ZTABLE_PATH}")
+
+    return z95
+# Hàm phân tích ACF – PACF và gợi ý p q
+def analyze_acf_pacf(series: pd.Series, ci_threshold: float):
+    """Analyze ACF & PACF to determine ARIMA p & q"""
+
+    from statsmodels.tsa.stattools import acf, pacf
+
+    data = series.dropna()
+    acf_vals = acf(data, nlags=40)
+    pacf_vals = pacf(data, nlags=40)
+
+    sig_acf_lags = [i for i, v in enumerate(acf_vals) if abs(v) > ci_threshold and i != 0]
+    sig_pacf_lags = [i for i, v in enumerate(pacf_vals) if abs(v) > ci_threshold and i != 0]
+
+    p = sig_pacf_lags[0] if sig_pacf_lags else 0
+    q = sig_acf_lags[0] if sig_acf_lags else 0
+
+    with open(ACF_PACF_TXT, "w", encoding="utf-8") as f:
+        f.write("ACF & PACF ANALYSIS REPORT\n")
+        f.write("=" * 60 + "\n\n")
+        f.write("Dataset: a10 – Differenced Series (d = 1)\n\n")
+
+        f.write("SIGNIFICANT LAGS (beyond 95% CI):\n")
+        f.write(f"- ACF significant lags → {sig_acf_lags}\n")
+        f.write(f"- PACF significant lags → {sig_pacf_lags}\n\n")
+
+        f.write("INTERPRETATION:\n")
+        f.write("- ACF giúp xác định q (MA part)\n")
+        f.write("- PACF giúp xác định p (AR part)\n\n")
+
+        f.write(f"Suggested parameters:\n")
+        f.write(f"p = {p}\n")
+        f.write(f"d = 1\n")
+        f.write(f"q = {q}\n\n")
+
+        f.write("Conclusion:\n")
+        if sig_acf_lags or sig_pacf_lags:
+            f.write("- Chuỗi sau sai phân vẫn còn cấu trúc tự tương quan.\n")
+            f.write("- Mô hình ARIMA có thể phù hợp để mô hình hóa.\n")
+        else:
+            f.write("- Không có lag nào vượt ngưỡng → gần giống white noise\n")
+
+    logger.info(f"ACF/PACF analysis saved at {ACF_PACF_TXT}")
 # =========================================================
 # 4. MAIN PIPELINE
 # =========================================================
@@ -219,6 +316,16 @@ def main():
     perform_adf_test(diff_series, ADF_DIFF_PATH)
 
     logger.info("=========== END EDA PIPELINE ===========")
+    
+    logger.info("========== START ACF & PACF ANALYSIS ==========")
+
+    plot_acf_pacf(diff_series)
+
+    ci_95 = write_z_table(diff_series)
+
+    analyze_acf_pacf(diff_series, ci_95)
+
+    logger.info("=========== END ACF & PACF ANALYSIS ===========")
 
 
 if __name__ == "__main__":
