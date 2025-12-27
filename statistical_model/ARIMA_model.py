@@ -34,7 +34,9 @@ LOG_FILE = os.path.join(LOG_DIR, f"ARIMA_model_{RUN_TIME}.log")
 PLOT_PATH = os.path.join(LOG_DIR, f"time_series_{RUN_TIME}.png")
 EDA_TEXT_PATH = os.path.join(LOG_DIR, f"eda_summary_{RUN_TIME}.txt")
 STATIONARITY_PATH = os.path.join(LOG_DIR, f"stationarity_test_{RUN_TIME}.txt")
-
+# thêm path cho đồ thị sai phân và kết quả kiểm định ADF sau sai phân
+DIFF_PLOT_PATH = os.path.join(LOG_DIR, f"diff_series_{RUN_TIME}.png")
+ADF_DIFF_PATH = os.path.join(LOG_DIR, f"stationarity_test_diff_{RUN_TIME}.txt")
 
 # =========================================================
 # 2. LOGGING CONFIGURATION
@@ -177,19 +179,44 @@ def perform_adf_test(series: pd.Series, output_path: str) -> None:
         logger.error(f"ADF test failed: {e}")
         raise
 
-
+# thêm hàm thực hiện sai phân và kiểm định ADF sau sai phân
+def difference_series(df: pd.DataFrame) -> pd.Series:
+    """Perform first differencing."""
+    diff_series = df["value"].diff()
+    logger.info("First differencing applied (d = 1)")
+    return diff_series
+# thêm hàm plot chuỗi sai phân
+def plot_diff_series(series: pd.Series, output_path: str) -> None:
+    """Plot and save differenced time series."""
+    plt.figure(figsize=(10, 5))
+    plt.plot(series.index, series)
+    plt.title("Differenced Time Series (d = 1)")
+    plt.xlabel("Time")
+    plt.ylabel("Differenced Value")
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+    logger.info(f"Differenced series plot saved at {output_path}")
 # =========================================================
 # 4. MAIN PIPELINE
 # =========================================================
 
 def main():
+    logger.info(f"Running file: {__file__}")
     logger.info("========== START EDA PIPELINE ==========")
 
     df = load_data(DATA_PATH)
     df = preprocess_data(df)
+
+    # Original time series
     plot_time_series(df, PLOT_PATH)
     perform_adf_test(df["value"], STATIONARITY_PATH)
     write_eda_summary(EDA_TEXT_PATH)
+
+    # First differencing (d = 1)
+    diff_series = difference_series(df)
+    plot_diff_series(diff_series, DIFF_PLOT_PATH)
+    perform_adf_test(diff_series, ADF_DIFF_PATH)
 
     logger.info("=========== END EDA PIPELINE ===========")
 
