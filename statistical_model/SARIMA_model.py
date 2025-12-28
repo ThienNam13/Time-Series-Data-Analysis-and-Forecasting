@@ -1,13 +1,16 @@
+# statistical_model/SARIMA_model.py
+
 import os
 import logging
 from datetime import datetime
 
 import pandas as pd
 import matplotlib.pyplot as plt
+
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-# thêm sarimax
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+
 # =========================================================
 # 1. PATH CONFIGURATION
 # =========================================================
@@ -58,6 +61,9 @@ logger = logging.getLogger(__name__)
 # =========================================================
 
 def load_data():
+    """
+    Load AirPassengers dataset
+    """
     df = pd.read_csv(DATA_PATH)
     df["Month"] = pd.to_datetime(df["Month"])
     df.set_index("Month", inplace=True)
@@ -66,6 +72,10 @@ def load_data():
 
 
 def plot_series(series, path, title):
+    """
+    Vẽ chuỗi thời gian
+    (Dùng cho Câu 1 và Câu 3)
+    """
     plt.figure(figsize=(10, 4))
     plt.plot(series)
     plt.title(title)
@@ -76,6 +86,10 @@ def plot_series(series, path, title):
 
 
 def adf_test(series, label):
+    """
+    Kiểm định ADF
+    (Dùng cho Câu 2 và kiểm tra lại sau Câu 3)
+    """
     result = adfuller(series.dropna())
     with open(ADF_PATH, "a", encoding="utf-8") as f:
         f.write(f"\nADF TEST – {label}\n")
@@ -86,13 +100,24 @@ def adf_test(series, label):
 
 
 def seasonal_differencing(series, d=1, D=1, s=12):
+    """
+    CÂU 3:
+    - Sai phân thường (d)
+    - Sai phân mùa vụ (D, chu kỳ s)
+    """
     diff = series.diff(d)
     seasonal_diff = diff.diff(D * s)
-    logger.info("Applied d=1 and seasonal D=1 (s=12)")
+    logger.info("Applied regular differencing (d=1)")
+    logger.info("Applied seasonal differencing (D=1, s=12)")
     return diff, seasonal_diff
 
 
 def plot_acf_pacf(series):
+    """
+    CÂU 4:
+    - Vẽ ACF & PACF
+    - Dùng để xác định (p, q) và (P, Q)
+    """
     plot_acf(series.dropna(), lags=40)
     plt.tight_layout()
     plt.savefig(ACF_PATH)
@@ -105,31 +130,33 @@ def plot_acf_pacf(series):
 
     logger.info("Saved ACF & PACF plots")
 
-#chèn thêm hàm fit SARIMA
+
 def fit_sarima(series, order=(1,1,1), seasonal_order=(1,1,1,12)):
     """
-    Fit SARIMA model với cấu hình đề xuất.
-    Ghi Summary, AIC, BIC, kiểm tra hội tụ.
+    CÂU 5:
+    Fit mô hình SARIMA(p,d,q)(P,D,Q,s)
     """
     logger.info(f"Fitting SARIMA: order={order}, seasonal_order={seasonal_order}")
     
-    model = SARIMAX(series, order=order, seasonal_order=seasonal_order,
-                    enforce_stationarity=False, enforce_invertibility=False)
+    model = SARIMAX(
+        series,
+        order=order,
+        seasonal_order=seasonal_order,
+        enforce_stationarity=False,
+        enforce_invertibility=False
+    )
     results = model.fit(disp=False)
-    
-    # Ghi summary, AIC, BIC
+
     summary_path = os.path.join(RUN_DIR, "sarima_summary.txt")
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(results.summary().as_text())
         f.write("\n\n")
         f.write(f"AIC: {results.aic:.4f}\n")
         f.write(f"BIC: {results.bic:.4f}\n")
-        f.write(f"Converged: {results.mle_retvals['converged']}\n")
-    
+
     logger.info(f"SARIMA model fitted. Summary saved: {summary_path}")
-    logger.info(f"AIC={results.aic:.4f}, BIC={results.bic:.4f}, Converged={results.mle_retvals['converged']}")
-    
     return results
+
 
 # =========================================================
 # 4. MAIN PIPELINE
@@ -140,21 +167,34 @@ def main():
 
     series = load_data()
 
+    # =====================================================
+    # CÂU 1: Vẽ chuỗi thời gian → nhận diện mùa vụ
+    # =====================================================
     plot_series(series, PLOT_ORIGINAL, "AirPassengers – Original Series")
+
+    # =====================================================
+    # CÂU 2: ADF chuỗi gốc → không dừng
+    # =====================================================
     adf_test(series, "Original Series")
 
+    # =====================================================
+    # CÂU 3: Sai phân thường + sai phân mùa vụ
+    # =====================================================
     diff, seasonal_diff = seasonal_differencing(series)
-
     plot_series(diff, PLOT_DIFF, "Differenced Series (d=1)")
     plot_series(seasonal_diff, PLOT_SEASONAL_DIFF, "Seasonal Differenced Series (d=1, D=1, s=12)")
 
-    adf_test(diff, "After d=1")
     adf_test(seasonal_diff, "After d=1, D=1")
 
+    # =====================================================
+    # CÂU 4: ACF / PACF → xác định (p,q,P,Q)
+    # =====================================================
     plot_acf_pacf(seasonal_diff)
 
-    # Fit SARIMA model
-    sarima_results = fit_sarima(series, order=(1,1,1), seasonal_order=(1,1,1,12))
+    # =====================================================
+    # CÂU 5: Fit SARIMA
+    # =====================================================
+    fit_sarima(series, order=(1,1,1), seasonal_order=(1,1,1,12))
 
     logger.info("END SARIMA ANALYSIS")
 
