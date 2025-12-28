@@ -11,10 +11,10 @@ import numpy as np
 from math import sqrt
 
 from statsmodels.tsa.arima.model import ARIMA
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 
 # =========================================================
-# 1. PATH CONFIGURATION
+#  CẤU HÌNH ĐƯỜNG DẪN & LOGGING
 # =========================================================
 
 # Project root directory
@@ -62,7 +62,7 @@ RESIDUAL_PLOT_PATH = os.path.join(RUN_DIR, f"residuals_{RUN_TIME}.png")
 RESIDUAL_ACF_PATH = os.path.join(RUN_DIR, f"residual_acf_{RUN_TIME}.png")
 
 # =========================================================
-# 2. LOGGING CONFIGURATION
+# LOGGING CONFIGURATION
 # =========================================================
 
 logging.basicConfig(
@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 
 
 # =========================================================
-# 3. FUNCTIONS
+# BÀI 1. KHÁM PHÁ DỮ LIỆU (EDA)
 # =========================================================
 
 def load_data(path: str) -> pd.DataFrame:
@@ -121,7 +121,7 @@ def plot_time_series(df: pd.DataFrame, output_path: str) -> None:
 def write_eda_summary(path: str) -> None:
     """Write EDA summary text file."""
     with open(path, "w", encoding="utf-8") as f:
-        f.write("EDA SUMMARY – DATASET a10 (Monthly Retail Sales)\n")
+        f.write("EDA SUMMARY - Bai 1 – DATASET a10 (Monthly Retail Sales)\n")
         f.write("=" * 55 + "\n\n")
 
         f.write("Dataset description:\n")
@@ -155,6 +155,9 @@ def write_eda_summary(path: str) -> None:
 
     logger.info(f"EDA summary written to {path}")
 
+# =========================================================
+# BÀI 2. KIỂM ĐỊNH ADF CHUỖI GỐC
+# =========================================================
 
 def perform_adf_test(series: pd.Series, output_path: str) -> None:
     """Perform ADF test on a series and write results to a text file."""
@@ -202,6 +205,10 @@ def perform_adf_test(series: pd.Series, output_path: str) -> None:
         logger.error(f"ADF test failed: {e}")
         raise
 
+# =========================================================
+# BÀI 3. SAI PHÂN & KIỂM ĐỊNH LẠI
+# =========================================================
+
 # thêm hàm thực hiện sai phân và kiểm định ADF sau sai phân
 def difference_series(df: pd.DataFrame) -> pd.Series:
     """Perform first differencing."""
@@ -220,6 +227,11 @@ def plot_diff_series(series: pd.Series, output_path: str) -> None:
     plt.savefig(output_path)
     plt.close()
     logger.info(f"Differenced series plot saved at {output_path}")
+
+# =========================================================
+# BÀI 4. PHÂN TÍCH ACF & PACF
+# =========================================================
+
 # Thêm hàm vẽ ACF & PACF
 def plot_acf_pacf(series: pd.Series):
     """Plot ACF & PACF for differenced stationary series"""
@@ -308,6 +320,11 @@ def analyze_acf_pacf(series: pd.Series, ci_threshold: float):
             f.write("- Không có lag nào vượt ngưỡng → gần giống white noise\n")
 
     logger.info(f"ACF/PACF analysis saved at {ACF_PACF_TXT}")
+
+# =========================================================
+# BÀI 5. ARIMA – FORECAST – EVALUATION
+# =========================================================
+
 # Hàm CHIA TRAIN – TEST (80/20)
 def split_train_test(series: pd.Series, train_ratio=0.8):
     n = len(series)
@@ -399,60 +416,88 @@ def residual_diagnostics(model_fit):
         logger.warning("Residual mean far from 0 → BAD")
 
 # =========================================================
-# 4. MAIN PIPELINE
+#  MAIN PIPELINE
 # =========================================================
 def main():
     logger.info(f"Running file: {__file__}")
+
+    # =====================================================
+    # BÀI 1 + BÀI 2 + BÀI 3: EDA – ADF – DIFFERENCING
+    # =====================================================
     logger.info("========== START EDA PIPELINE ==========")
 
+    # Load & preprocess data
     df = load_data(DATA_PATH)
     df = preprocess_data(df)
 
+    # Bài 1: Vẽ chuỗi thời gian (EDA)
     # Original time series
     plot_time_series(df, PLOT_PATH)
-    perform_adf_test(df["value"], STATIONARITY_PATH)
     write_eda_summary(EDA_TEXT_PATH)
 
+    # Bài 2: Kiểm định ADF chuỗi gốc
+    perform_adf_test(df["value"], STATIONARITY_PATH)
+
+    # Bài 3: Sai phân bậc 1 + ADF sau sai phân
     # First differencing (d = 1)
     diff_series = difference_series(df)
     plot_diff_series(diff_series, DIFF_PLOT_PATH)
     perform_adf_test(diff_series, ADF_DIFF_PATH)
 
     logger.info("=========== END EDA PIPELINE ===========")
-    # Bài 4. ACF và PACF
+    # =====================================================
+    # BÀI 4: PHÂN TÍCH ACF & PACF – ĐỀ XUẤT (p, d, q)
+    # =====================================================
     logger.info("========== START ACF & PACF ANALYSIS ==========")
 
     plot_acf_pacf(diff_series)
 
     ci_95 = write_z_table(diff_series)
-
     analyze_acf_pacf(diff_series, ci_95)
 
     logger.info("=========== END ACF & PACF ANALYSIS ===========")
-    # Bài 5. Xây mô hình ARIMA
+    # =========================================================
+    # Bài 5. Xây mô hình ARIMA – Forecast – Evaluation
+    # =========================================================
     logger.info("========== START ARIMA MODELING ==========")
 
     # Use original series for modeling (not differenced manually)
     series = df["value"]
 
+    # ---------------------------------------------------------
+    # (1) TRAIN – TEST SPLIT (80% / 20%) – KHÔNG SHUFFLE
+    # ---------------------------------------------------------
     train, test = split_train_test(series)
+    logger.info("Task 5.1: Train/Test split completed (80/20, no shuffle)")
 
-    # Suggest ARIMA based on Task 4 results
-    arima_order = (1,1,1)
-
+    # ---------------------------------------------------------
+    # (2) FIT ARIMA MODEL
+    # ---------------------------------------------------------
+    arima_order = (1, 1, 1)
     model_fit = fit_arima_model(train, arima_order)
+    logger.info("Task 5.2: ARIMA model fitted")
 
+    # ---------------------------------------------------------
+    # (4) FORECASTING ON TEST SET
+    # ---------------------------------------------------------
     forecast = forecast_and_plot(train, test, model_fit)
+    logger.info("Task 5.4: Forecasting completed on test set")
 
-    # Evaluation
+    # ---------------------------------------------------------
+    # (5) MODEL EVALUATION: MAE, RMSE, MAPE
+    # ---------------------------------------------------------
     mae = mean_absolute_error(test, forecast)
-    mse = mean_squared_error(test, forecast)
-    rmse = np.sqrt(mse)
+    rmse = np.sqrt(mean_squared_error(test, forecast))
+    mape = mean_absolute_percentage_error(test, forecast) * 100
 
-    logger.info(f"MAE = {mae}")
-    logger.info(f"MSE = {mse}")
+    logger.info("Task 5.5: Evaluation metrics calculated")
+    logger.info(f"MAE  = {mae}")
     logger.info(f"RMSE = {rmse}")
+    logger.info(f"MAPE = {mape:.2f}%")
 
+    # ---------------------------------------------------------
+    # RESIDUAL DIAGNOSTICS
+    # ---------------------------------------------------------
     residual_diagnostics(model_fit)
 
     logger.info("=========== END ARIMA MODELING ===========")
