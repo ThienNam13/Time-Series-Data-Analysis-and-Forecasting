@@ -35,26 +35,31 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # Timestamp for this run
 RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+# === RUN-SPECIFIC DIRECTORY (CHỈ THÊM PHẦN NÀY) ===
+RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
+os.makedirs(RUN_DIR, exist_ok=True)
+
 # File paths
 DATA_PATH = os.path.join(DATA_DIR, "a10.csv")
-LOG_FILE = os.path.join(LOG_DIR, f"ARIMA_model_{RUN_TIME}.log")
-PLOT_PATH = os.path.join(LOG_DIR, f"time_series_{RUN_TIME}.png")
-EDA_TEXT_PATH = os.path.join(LOG_DIR, f"eda_summary_{RUN_TIME}.txt")
-STATIONARITY_PATH = os.path.join(LOG_DIR, f"stationarity_test_{RUN_TIME}.txt")
+LOG_FILE = os.path.join(RUN_DIR, f"ARIMA_model_{RUN_TIME}.log")
+PLOT_PATH = os.path.join(RUN_DIR, f"time_series_{RUN_TIME}.png")
+EDA_TEXT_PATH = os.path.join(RUN_DIR, f"eda_summary_{RUN_TIME}.txt")
+# thêm path cho 2. Kiểm định tính dừng bằng ADF (chuỗi gốc)
+STATIONARITY_PATH = os.path.join(RUN_DIR, f"stationarity_test_{RUN_TIME}.txt")
 # thêm path cho đồ thị sai phân và kết quả kiểm định ADF sau sai phân
-DIFF_PLOT_PATH = os.path.join(LOG_DIR, f"diff_series_{RUN_TIME}.png")
-ADF_DIFF_PATH = os.path.join(LOG_DIR, f"stationarity_test_diff_{RUN_TIME}.txt")
+DIFF_PLOT_PATH = os.path.join(RUN_DIR, f"diff_series_{RUN_TIME}.png")
+ADF_DIFF_PATH = os.path.join(RUN_DIR, f"stationarity_test_diff_{RUN_TIME}.txt")
 # thêm path cho 4. ACF & PACF cho chuỗi đã dừng
-ACF_PATH = os.path.join(LOG_DIR, f"acf_{RUN_TIME}.png")
-PACF_PATH = os.path.join(LOG_DIR, f"pacf_{RUN_TIME}.png")
-ACF_PACF_TXT = os.path.join(LOG_DIR, f"ACF_PACF_Analysis_{RUN_TIME}.txt")
-ZTABLE_PATH = os.path.join(LOG_DIR, f"z_table_{RUN_TIME}.txt")
+ACF_PATH = os.path.join(RUN_DIR, f"acf_{RUN_TIME}.png")
+PACF_PATH = os.path.join(RUN_DIR, f"pacf_{RUN_TIME}.png")
+ACF_PACF_TXT = os.path.join(RUN_DIR, f"ACF_PACF_Analysis_{RUN_TIME}.txt")
+ZTABLE_PATH = os.path.join(RUN_DIR, f"z_table_{RUN_TIME}.txt")
 # thêm path cho 5. xây dựng mô hình ARIMA
-MODEL_SUMMARY_PATH = os.path.join(LOG_DIR, f"model_summary_{RUN_TIME}.txt")
-FORECAST_PLOT_PATH = os.path.join(LOG_DIR, f"forecast_{RUN_TIME}.png")
-FORECAST_VALUE_PATH = os.path.join(LOG_DIR, f"forecast_values_{RUN_TIME}.txt")
-RESIDUAL_PLOT_PATH = os.path.join(LOG_DIR, f"residuals_{RUN_TIME}.png")
-RESIDUAL_ACF_PATH = os.path.join(LOG_DIR, f"residual_acf_{RUN_TIME}.png")
+MODEL_SUMMARY_PATH = os.path.join(RUN_DIR, f"model_summary_{RUN_TIME}.txt")
+FORECAST_PLOT_PATH = os.path.join(RUN_DIR, f"forecast_{RUN_TIME}.png")
+FORECAST_VALUE_PATH = os.path.join(RUN_DIR, f"forecast_values_{RUN_TIME}.txt")
+RESIDUAL_PLOT_PATH = os.path.join(RUN_DIR, f"residuals_{RUN_TIME}.png")
+RESIDUAL_ACF_PATH = os.path.join(RUN_DIR, f"residual_acf_{RUN_TIME}.png")
 
 # =========================================================
 # 2. LOGGING CONFIGURATION
