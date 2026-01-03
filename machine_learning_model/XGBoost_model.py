@@ -8,29 +8,21 @@ import pandas as pd
 # 1. PATH CONFIGURATION
 # =========================================================
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DATA_PATH = os.path.join(DATA_DIR, "AEP_hourly.csv")
+LOG_DIR = os.path.join(BASE_DIR, "log")
 
-LOG_DIR = os.path.join(
-    BASE_DIR,
-    "machine_learning",
-    "logs",
-    "XGBoost_model",
-    "AEP_hourly"
-)
+os.makedirs(LOG_DIR, exist_ok=True)
 
 RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
-RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
-os.makedirs(RUN_DIR, exist_ok=True)
 
-LOG_FILE = os.path.join(RUN_DIR, "data_check.log")
-SUMMARY_FILE = os.path.join(RUN_DIR, "data_summary.txt")
-LAG_FILE = os.path.join(RUN_DIR, "lag_features.txt")
+DATA_PATH = os.path.join(DATA_DIR, "AEP_hourly.csv")
+LOG_FILE = os.path.join(LOG_DIR, f"xgboost_pipeline_{RUN_TIME}.log")
+INFO_TXT = os.path.join(LOG_DIR, f"data_check_{RUN_TIME}.txt")
 
 # =========================================================
-# 2. LOGGING CONFIGURATION
+# 2. LOGGING
 # =========================================================
 
 logging.basicConfig(
@@ -39,7 +31,8 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler(LOG_FILE),
         logging.StreamHandler()
-    ]
+    ],
+    force=True
 )
 
 logger = logging.getLogger(__name__)
@@ -48,86 +41,76 @@ logger = logging.getLogger(__name__)
 # 3. FUNCTIONS
 # =========================================================
 
-def load_and_check_data(path: str) -> pd.DataFrame:
-    logger.info("Loading dataset...")
+def load_data(path: str) -> pd.DataFrame:
+    logger.info(f"Loading dataset from: {path}")
     df = pd.read_csv(path)
-
-    logger.info("Parsing datetime...")
-    df["Datetime"] = pd.to_datetime(df["Datetime"])
-    df.set_index("Datetime", inplace=True)
-
+    logger.info(f"Dataset shape: {df.shape}")
     return df
 
 
-def check_missing_and_frequency(df: pd.DataFrame) -> None:
-    missing_count = df.isna().sum().sum()
-    freq = pd.infer_freq(df.index)
+def preprocess_datetime(df: pd.DataFrame) -> pd.DataFrame:
+    df["Datetime"] = pd.to_datetime(df["Datetime"])
+    df.set_index("Datetime", inplace=True)
+    df.sort_index(inplace=True)
+    logger.info("Datetime parsed and set as index")
+    return df
 
-    with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
-        f.write("DATA CHECK SUMMARY – AEP_hourly\n")
+
+def check_data_quality(df: pd.DataFrame):
+    missing_values = df.isna().sum().sum()
+    inferred_freq = pd.infer_freq(df.index)
+
+    with open(INFO_TXT, "w", encoding="utf-8") as f:
+        f.write("DATA QUALITY CHECK – AEP_hourly\n")
         f.write("=" * 50 + "\n\n")
+        f.write(f"Total missing values: {missing_values}\n")
+        f.write(f"Inferred frequency: {inferred_freq}\n\n")
 
-        f.write("1. Missing Values\n")
-        f.write(f"- Total missing values: {missing_count}\n\n")
-
-        f.write("2. Time Frequency Check\n")
-        f.write(f"- Inferred frequency: {freq}\n")
-
-        if freq != "H":
-            f.write("- WARNING: Missing hours detected!\n")
+        if missing_values == 0:
+            f.write(" No missing values detected.\n")
         else:
-            f.write("- Frequency is consistent (Hourly)\n")
+            f.write(" Dataset contains missing values.\n")
 
-    logger.info(f"Missing values: {missing_count}")
-    logger.info(f"Frequency inferred: {freq}")
+        if inferred_freq == "H":
+            f.write(" Hourly frequency is consistent.\n")
+        else:
+            f.write(" Hourly frequency is broken or irregular.\n")
+
+    logger.info("Data quality check saved")
 
 
-def create_lag_features(df: pd.DataFrame, target_col="AEP_MW", n_lags=24) -> pd.DataFrame:
-    logger.info(f"Creating lag features with n_lags = {n_lags}")
-
-    lagged_df = df.copy()
+def create_lag_features(series: pd.Series, n_lags: int = 24) -> pd.DataFrame:
+    df = pd.DataFrame({"y": series})
 
     for lag in range(1, n_lags + 1):
-        lagged_df[f"{target_col}_lag_{lag}"] = lagged_df[target_col].shift(lag)
+        df[f"y_lag_{lag}"] = series.shift(lag)
 
-    before_drop = len(lagged_df)
-    lagged_df.dropna(inplace=True)
-    after_drop = len(lagged_df)
+    rows_before = len(df)
+    df.dropna(inplace=True)
+    rows_after = len(df)
 
-    dropped_rows = before_drop - after_drop
+    logger.info(f"Number of lags: {n_lags}")
+    logger.info(f"Rows dropped due to lagging: {rows_before - rows_after}")
+    logger.info(f"Feature columns: {list(df.columns)}")
 
-    with open(LAG_FILE, "w", encoding="utf-8") as f:
-        f.write("LAG FEATURE ENGINEERING REPORT\n")
-        f.write("=" * 55 + "\n\n")
-
-        f.write(f"Number of lags: {n_lags}\n")
-        f.write(f"Dropped rows due to lagging: {dropped_rows}\n\n")
-
-        f.write("Lag features created:\n")
-        for col in lagged_df.columns:
-            if "lag_" in col:
-                f.write(f"- {col}\n")
-
-    logger.info(f"Lag features created: {n_lags}")
-    logger.info(f"Rows dropped due to lagging: {dropped_rows}")
-
-    return lagged_df
+    return df
 
 # =========================================================
-# 4. MAIN PIPELINE
+# 4. MAIN
 # =========================================================
 
 def main():
-    logger.info("START DATA PREPARATION – XGBOOST")
+    logger.info("========== START XGBOOST DATA PIPELINE ==========")
 
-    df = load_and_check_data(DATA_PATH)
-    check_missing_and_frequency(df)
+    df = load_data(DATA_PATH)
+    df = preprocess_datetime(df)
 
-    supervised_df = create_lag_features(df)
+    check_data_quality(df)
 
-    logger.info("END DATA PREPARATION – XGBOOST")
-    logger.info(f"Artifacts saved at: {RUN_DIR}")
+    supervised_df = create_lag_features(df.iloc[:, 0], n_lags=24)
 
+    logger.info(f"Supervised dataset shape: {supervised_df.shape}")
+    logger.info("=========== END XGBOOST DATA PIPELINE ===========")
 
 if __name__ == "__main__":
     main()
