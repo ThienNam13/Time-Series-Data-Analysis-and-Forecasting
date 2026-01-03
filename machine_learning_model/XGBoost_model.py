@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 
 import pandas as pd
+# thư viện numpy và xgboost (cho bài nâng cao)
 import numpy as np
 from xgboost import XGBRegressor
 
