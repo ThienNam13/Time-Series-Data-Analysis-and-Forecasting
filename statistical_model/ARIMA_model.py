@@ -35,7 +35,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # Timestamp for this run
 RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# === RUN-SPECIFIC DIRECTORY (CHỈ THÊM PHẦN NÀY) ===
+# === RUN-SPECIFIC DIRECTORY ===
 RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
 os.makedirs(RUN_DIR, exist_ok=True)
 

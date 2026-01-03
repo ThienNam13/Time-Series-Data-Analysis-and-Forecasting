@@ -1,9 +1,7 @@
 import os
 import logging
 from datetime import datetime
-
 import pandas as pd
-# thư viện numpy và xgboost (cho bài nâng cao)
 import numpy as np
 from xgboost import XGBRegressor
 
@@ -11,19 +9,32 @@ from xgboost import XGBRegressor
 # 1. PATH CONFIGURATION
 # =========================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DATA_DIR = os.path.join(BASE_DIR, "data")
-LOG_DIR = os.path.join(BASE_DIR, "log")
+DATA_DIR = os.path.join(BASE_DIR, "machine_learning_model\data")
+LOG_DIR = os.path.join(
+    BASE_DIR,
+    "machine_learning_model",
+    "logs",
+    "XGBoost_model",
+    "AEPhourly"
+)
 
 os.makedirs(LOG_DIR, exist_ok=True)
-
+# Timestamp for this run
 RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+# === RUN-SPECIFIC DIRECTORY ===
+RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
+os.makedirs(RUN_DIR, exist_ok=True)
+
 DATA_PATH = os.path.join(DATA_DIR, "AEP_hourly.csv")
-LOG_FILE = os.path.join(LOG_DIR, f"xgboost_pipeline_{RUN_TIME}.log")
-INFO_TXT = os.path.join(LOG_DIR, f"data_check_{RUN_TIME}.txt")
-FORECAST_TXT = os.path.join(LOG_DIR, f"multi_step_forecast_{RUN_TIME}.txt")
+LOG_FILE = os.path.join(RUN_DIR, f"xgboost_pipeline_{RUN_TIME}.log")
+INFO_TXT = os.path.join(RUN_DIR, f"data_check_{RUN_TIME}.txt")
+FORECAST_TXT = os.path.join(RUN_DIR, f"multi_step_forecast_{RUN_TIME}.txt")
+
+SUPERVISED_TXT = os.path.join(RUN_DIR, f"X_y_split_{RUN_TIME}.txt")
+SPLIT_INFO_TXT = os.path.join(RUN_DIR, f"train_test_split_{RUN_TIME}.txt")
 
 # =========================================================
 # 2. LOGGING
@@ -118,6 +129,81 @@ def multi_step_forecast(model, last_window, n_steps=24):
         current_window[-1] = pred
 
     return forecasts
+# CHIA X-y
+def split_X_y(supervised_df: pd.DataFrame):
+    """
+    Split supervised dataframe into X and y
+    """
+    X = supervised_df.drop(columns="y")
+    y = supervised_df["y"]
+
+    logger.info("Split supervised data into X and y")
+    logger.info(f"X shape: {X.shape}")
+    logger.info(f"y shape: {y.shape}")
+
+    # ===== WRITE REPORT FILE =====
+    with open(SUPERVISED_TXT, "w", encoding="utf-8") as f:
+        f.write("TASK 3 – SUPERVISED LEARNING FORMAT\n")
+        f.write("=" * 50 + "\n\n")
+        f.write("Target variable (y): current value\n")
+        f.write("Features (X): lagged values\n\n")
+        f.write(f"Total samples: {len(supervised_df)}\n")
+        f.write(f"X shape: {X.shape}\n")
+        f.write(f"y shape: {y.shape}\n\n")
+        f.write("Feature columns:\n")
+        for col in X.columns:
+            f.write(f"- {col}\n")
+
+    logger.info(f"Supervised X/y split info saved → {SUPERVISED_TXT}")
+
+    return X, y
+
+# TRAIN / TEST SPLIT (THEO THỜI GIAN – KHÔNG SHUFFLE)
+def time_series_train_test_split(X, y, train_ratio=0.8):
+    """
+    Split data into train/test sets without shuffling
+    """
+    split_idx = int(len(X) * train_ratio)
+
+    X_train = X.iloc[:split_idx]
+    X_test = X.iloc[split_idx:]
+    y_train = y.iloc[:split_idx]
+    y_test = y.iloc[split_idx:]
+
+    logger.info("Time series train-test split completed")
+    logger.info(f"Train size: {len(X_train)}")
+    logger.info(f"Test size: {len(X_test)}")
+
+    # ===== WRITE REPORT FILE =====
+    with open(SPLIT_INFO_TXT, "w", encoding="utf-8") as f:
+        f.write("TASK 4 – TIME SERIES TRAIN / TEST SPLIT\n")
+        f.write("=" * 55 + "\n\n")
+        f.write("Split strategy:\n")
+        f.write("- Train: 80%\n")
+        f.write("- Test : 20%\n")
+        f.write("- No shuffling (time order preserved)\n\n")
+
+        f.write(f"Total samples: {len(X)}\n")
+        f.write(f"Train samples: {len(X_train)}\n")
+        f.write(f"Test samples : {len(X_test)}\n\n")
+
+        f.write("Train period:\n")
+        f.write(f"  From: {X_train.index.min()}\n")
+        f.write(f"  To  : {X_train.index.max()}\n\n")
+
+        f.write("Test period:\n")
+        f.write(f"  From: {X_test.index.min()}\n")
+        f.write(f"  To  : {X_test.index.max()}\n\n")
+
+        f.write("Rationale:\n")
+        f.write(
+            "- Time series data must not be shuffled.\n"
+            "- Future information must not leak into training data.\n"
+        )
+
+    logger.info(f"Train/test split info saved → {SPLIT_INFO_TXT}")
+
+    return X_train, X_test, y_train, y_test
 
 # =========================================================
 # 4. MAIN
@@ -136,10 +222,19 @@ def main():
     # Supervised learning
     supervised_df = create_lag_features(df.iloc[:, 0], n_lags=24)
 
-    X = supervised_df.drop(columns="y")
-    y = supervised_df["y"]
+    # =============================
+    # Split X / y
+    # =============================
+    X, y = split_X_y(supervised_df)
 
-    # Train simple XGBoost model
+    # =============================
+    # Train / Test split
+    # =============================
+    X_train, X_test, y_train, y_test = time_series_train_test_split(X, y)
+
+    # =============================
+    # Train XGBoost on TRAIN ONLY
+    # =============================
     model = XGBRegressor(
         n_estimators=100,
         max_depth=3,
@@ -148,8 +243,9 @@ def main():
         random_state=42
     )
 
-    model.fit(X, y)
-    logger.info("XGBoost model trained")
+    model.fit(X_train, y_train)
+    logger.info("XGBoost model trained on TRAIN set only")
+
 
     # Multi-step forecast (24 hours)
     last_window = X.iloc[-1].values
