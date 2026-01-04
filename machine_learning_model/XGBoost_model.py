@@ -35,6 +35,7 @@ FORECAST_TXT = os.path.join(RUN_DIR, f"multi_step_forecast_{RUN_TIME}.txt")
 
 SUPERVISED_TXT = os.path.join(RUN_DIR, f"X_y_split_{RUN_TIME}.txt")
 SPLIT_INFO_TXT = os.path.join(RUN_DIR, f"train_test_split_{RUN_TIME}.txt")
+MODEL_INFO_TXT = os.path.join(RUN_DIR, f"xgboost_model_info_{RUN_TIME}.txt")
 
 # =========================================================
 # 2. LOGGING
@@ -245,7 +246,42 @@ def main():
 
     model.fit(X_train, y_train)
     logger.info("XGBoost model trained on TRAIN set only")
+    # =============================
+    # SAVE MODEL INFO
+    # ============================= 
+    with open(MODEL_INFO_TXT, "w", encoding="utf-8") as f:
+        f.write("BASELINE XGBOOST MODEL\n")
+        f.write("=" * 55 + "\n\n")
 
+        f.write("Model type: XGBoost Regressor\n")
+        f.write("Purpose: Baseline model (no hyperparameter tuning)\n\n")
+
+        f.write("Training strategy:\n")
+        f.write("- Train set only (time-series split)\n")
+        f.write("- No data shuffling\n")
+        f.write("- No validation / CV at this stage\n\n")
+
+        f.write("Model hyperparameters:\n")
+        f.write(f"- n_estimators   : {model.n_estimators}\n")
+        f.write(f"- max_depth     : {model.max_depth}\n")
+        f.write(f"- learning_rate : {model.learning_rate}\n")
+        f.write(f"- objective     : {model.objective}\n")
+        f.write(f"- random_state  : {model.random_state}\n\n")
+
+        f.write("Input features:\n")
+        f.write(f"- Number of lag features: {X_train.shape[1]}\n")
+        f.write("- Feature description: y(t-1) ... y(t-24)\n\n")
+
+        f.write("Target variable:\n")
+        f.write("- y(t): current hourly power consumption\n\n")
+
+        f.write("Notes:\n")
+        f.write(
+            "- This model serves as a baseline for later comparison.\n"
+            "- Performance evaluation and tuning will be done in later tasks.\n"
+        )
+
+    logger.info(f"Baseline model info saved → {MODEL_INFO_TXT}")
 
     # Multi-step forecast (24 hours)
     last_window = X.iloc[-1].values
