@@ -9,6 +9,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_error
+
+
 # =========================================================
 # 1. PATH CONFIGURATION
 # =========================================================
@@ -43,6 +47,12 @@ ROLLING_STATS_TXT = os.path.join(RUN_DIR, f"rolling_stats_{RUN_TIME}.txt")
 SUPERVISED_TXT = os.path.join(RUN_DIR, f"X_y_split_{RUN_TIME}.txt")
 SPLIT_INFO_TXT = os.path.join(RUN_DIR, f"train_test_split_{RUN_TIME}.txt")
 MODEL_INFO_TXT = os.path.join(RUN_DIR, f"xgboost_model_info_{RUN_TIME}.txt")
+
+TUNING_TXT = os.path.join(RUN_DIR, f"xgboost_tuning_{RUN_TIME}.txt")
+
+MODEL_COMPARISON_TXT = os.path.join(RUN_DIR,"model_comparison.txt")
+
+
 
 # =========================================================
 # 2. LOGGING
@@ -212,6 +222,47 @@ def time_series_train_test_split(X, y, train_ratio=0.8):
         logger.info(f"Train/test split info saved -> {SPLIT_INFO_TXT}")
 
     return X_train, X_test, y_train, y_test
+
+# Tạo hàm tune XGBoost
+def tune_xgboost_timeseries(X_train, y_train, n_splits=3):
+    """
+    Tune XGBoost hyperparameters using TimeSeriesSplit
+    """
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    param_grid = [
+        {"max_depth": 3, "learning_rate": 0.1, "n_estimators": 100},
+        {"max_depth": 5, "learning_rate": 0.05, "n_estimators": 200},
+        {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 300},
+    ]
+
+    results = []
+
+    for params in param_grid:
+        fold_mae = []
+
+        for train_idx, val_idx in tscv.split(X_train):
+            X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
+            y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
+
+            model = XGBRegressor(
+                objective="reg:squarederror",
+                random_state=42,
+                **params
+            )
+            model.fit(X_tr, y_tr)
+            preds = model.predict(X_val)
+            mae = mean_absolute_error(y_val, preds)
+            fold_mae.append(mae)
+
+        avg_mae = np.mean(fold_mae)
+        results.append((params, avg_mae))
+
+        logger.info(f"Tuning result {params} → MAE={avg_mae:.4f}")
+
+    best_params = sorted(results, key=lambda x: x[1])[0]
+
+    return best_params
 
 # =========================================================
 # 4. MAIN
@@ -449,6 +500,17 @@ def main():
         logger.exception(f"Rolling features (advanced) failed: {e}")
 
     logger.info("=========== END XGBOOST PIPELINE ===========")
+
+    best_params, best_mae = tune_xgboost_timeseries(X_train, y_train)
+
+    with open(TUNING_TXT, "w", encoding="utf-8") as f:
+        f.write("XGBOOST HYPERPARAMETER TUNING (TimeSeriesSplit)\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Best params: {best_params}\n")
+        f.write(f"Validation MAE: {best_mae:.4f}\n")
+
+    logger.info("XGBoost hyperparameter tuning completed")
+
 
 if __name__ == "__main__":
     main()

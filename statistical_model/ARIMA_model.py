@@ -40,13 +40,24 @@ RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
 os.makedirs(RUN_DIR, exist_ok=True)
 
 # File paths
+# =========================================================
+# BÀI 1. KHÁM PHÁ DỮ LIỆU (EDA)
+# - Load dữ liệu
+# - Chuyển date thành index thời gian
+# - Vẽ đồ thị chuỗi thời gian
+# =========================================================
+# Đường dẫn file dữ liệu gốc
 DATA_PATH = os.path.join(DATA_DIR, "a10.csv")
+# File log ghi lại toàn bộ quá trình chạy
 LOG_FILE = os.path.join(RUN_DIR, f"ARIMA_model_{RUN_TIME}.log")
+# Lưu đồ thị chuỗi thời gian gốc (EDA)
 PLOT_PATH = os.path.join(RUN_DIR, f"time_series_{RUN_TIME}.png")
+# Lưu file tổng hợp nhận xét EDA (xu hướng, mùa vụ, tính dừng)
 EDA_TEXT_PATH = os.path.join(RUN_DIR, f"eda_summary_{RUN_TIME}.txt")
+
 # thêm path cho 2. Kiểm định tính dừng bằng ADF (chuỗi gốc)
 STATIONARITY_PATH = os.path.join(RUN_DIR, f"stationarity_test_{RUN_TIME}.txt")
-# thêm path cho đồ thị sai phân và kết quả kiểm định ADF sau sai phân
+#3. thêm path cho đồ thị sai phân và kết quả kiểm định ADF sau sai phân
 DIFF_PLOT_PATH = os.path.join(RUN_DIR, f"diff_series_{RUN_TIME}.png")
 ADF_DIFF_PATH = os.path.join(RUN_DIR, f"stationarity_test_diff_{RUN_TIME}.txt")
 # thêm path cho 4. ACF & PACF cho chuỗi đã dừng
@@ -325,7 +336,7 @@ def analyze_acf_pacf(series: pd.Series, ci_threshold: float):
 # BÀI 5. ARIMA – FORECAST – EVALUATION
 # =========================================================
 
-# Hàm CHIA TRAIN – TEST (80/20)
+#5.1 Hàm CHIA TRAIN – TEST (80/20)
 def split_train_test(series: pd.Series, train_ratio=0.8):
     n = len(series)
     train_size = int(n * train_ratio)
@@ -335,7 +346,7 @@ def split_train_test(series: pd.Series, train_ratio=0.8):
 
     logger.info(f"Train size: {len(train)}, Test size: {len(test)}")
     return train, test
-# Hàm FIT ARIMA + GHI LOG + SUMMARY
+#5.2 Hàm FIT ARIMA + GHI LOG + SUMMARY
 def fit_arima_model(train, order):
     logger.info(f"Fitting ARIMA{order} model...")
     try:
@@ -355,34 +366,8 @@ def fit_arima_model(train, order):
     except Exception as e:
         logger.error(f"Failed to fit ARIMA model: {e}")
         raise
-# FORECAST + LƯU TXT + VẼ
-def forecast_and_plot(train, test, model_fit):
-    forecast = model_fit.forecast(steps=len(test))
 
-    # Save forecast + test values
-    with open(FORECAST_VALUE_PATH, "w", encoding="utf-8") as f:
-        f.write("FORECAST VALUES vs TEST\n")
-        f.write("="*50 + "\n\n")
-        for t, p in zip(test.values, forecast.values):
-            f.write(f"Actual = {t:.4f}   |   Forecast = {p:.4f}\n")
-
-    logger.info(f"Forecast values saved at {FORECAST_VALUE_PATH}")
-
-    # Plot
-    plt.figure(figsize=(10,5))
-    plt.plot(train.index, train, label="Train")
-    plt.plot(test.index, test, label="Test", color="orange")
-    plt.plot(test.index, forecast, label="Forecast", color="green")
-    plt.title("ARIMA Forecast vs Actual (Test Set)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(FORECAST_PLOT_PATH)
-    plt.close()
-
-    logger.info(f"Forecast plot saved → {FORECAST_PLOT_PATH}")
-
-    return forecast
-# RESIDUAL DIAGNOSTICS (vẽ residual, ACF residual, kiểm tra mean ~ 0)
+#5.3 RESIDUAL DIAGNOSTICS (vẽ residual, ACF residual, kiểm tra mean ~ 0)
 def residual_diagnostics(model_fit):
     residuals = model_fit.resid
 
@@ -414,6 +399,34 @@ def residual_diagnostics(model_fit):
         logger.info("Residual mean ≈ 0 → GOOD")
     else:
         logger.warning("Residual mean far from 0 → BAD")
+
+#5.4 FORECAST + LƯU TXT + VẼ
+def forecast_and_plot(train, test, model_fit):
+    forecast = model_fit.forecast(steps=len(test))
+
+    # Save forecast + test values
+    with open(FORECAST_VALUE_PATH, "w", encoding="utf-8") as f:
+        f.write("FORECAST VALUES vs TEST\n")
+        f.write("="*50 + "\n\n")
+        for t, p in zip(test.values, forecast.values):
+            f.write(f"Actual = {t:.4f}   |   Forecast = {p:.4f}\n")
+
+    logger.info(f"Forecast values saved at {FORECAST_VALUE_PATH}")
+
+    # Plot
+    plt.figure(figsize=(10,5))
+    plt.plot(train.index, train, label="Train")
+    plt.plot(test.index, test, label="Test", color="orange")
+    plt.plot(test.index, forecast, label="Forecast", color="green")
+    plt.title("ARIMA Forecast vs Actual (Test Set)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(FORECAST_PLOT_PATH)
+    plt.close()
+
+    logger.info(f"Forecast plot saved → {FORECAST_PLOT_PATH}")
+
+    return forecast
 
 # =========================================================
 #  MAIN PIPELINE
@@ -484,7 +497,7 @@ def main():
     logger.info("Task 5.4: Forecasting completed on test set")
 
     # ---------------------------------------------------------
-    # (5) MODEL EVALUATION: MAE, RMSE, MAPE
+    # (5.5) MODEL EVALUATION: MAE, RMSE, MAPE
     # ---------------------------------------------------------
     mae = mean_absolute_error(test, forecast)
     rmse = np.sqrt(mean_squared_error(test, forecast))
