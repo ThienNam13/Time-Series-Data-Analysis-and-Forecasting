@@ -27,6 +27,16 @@ LOG_DIR = os.path.join(
     "XGBoost_model",
     "AEPhourly"
 )
+# ===== RANDOM FOREST EVALUATION FILE (FROM RF PIPELINE) =====
+RF_EVAL_TXT = os.path.join(
+    BASE_DIR,
+    "machine_learning_model",
+    "logs",
+    "RandomForest_model",
+    "AEPhourly",
+    "run_20260104_183518",
+    "evaluation_metrics.txt"
+)
 
 os.makedirs(LOG_DIR, exist_ok=True)
 # Timestamp for this run
@@ -263,6 +273,19 @@ def tune_xgboost_timeseries(X_train, y_train, n_splits=3):
     best_params = sorted(results, key=lambda x: x[1])[0]
 
     return best_params
+# Hàm parse metrics từ file
+def read_metrics_from_txt(path):
+    metrics = {}
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("MAE"):
+                metrics["MAE"] = float(line.split()[-1].replace("%", ""))
+            elif line.startswith("RMSE"):
+                metrics["RMSE"] = float(line.split()[-1].replace("%", ""))
+            elif line.startswith("MAPE"):
+                metrics["MAPE"] = float(line.split()[-1].replace("%", ""))
+    return metrics
 
 # =========================================================
 # 4. MAIN
@@ -498,6 +521,86 @@ def main():
 
     except Exception as e:
         logger.exception(f"Rolling features (advanced) failed: {e}")
+    # =========================================================
+    # TASK – MODEL COMPARISON (XGBoost vs Random Forest)
+    # =========================================================
+    logger.info("Starting TASK – Model Comparison")
+
+    try:
+        # =====================================================
+        # READ METRICS
+        # =====================================================
+        xgb_metrics = read_metrics_from_txt(EVALUATION_TXT)
+        rf_metrics = read_metrics_from_txt(RF_EVAL_TXT)
+
+        # =====================================================
+        # OUTPUT FILE (CÔ SẼ MỞ FILE NÀY)
+        # =====================================================
+        MODEL_COMPARISON_TXT = os.path.join(
+            BASE_DIR,
+            "machine_learning_model",
+            "logs",
+            "XGBoost_model",
+            "AEPhourly",
+            "model_comparison.txt"
+        )
+
+        # =====================================================
+        # WRITE FILE
+        # =====================================================
+        with open(MODEL_COMPARISON_TXT, "w", encoding="utf-8") as f:
+            f.write("MODEL COMPARISON – AEP HOURLY ENERGY DATASET\n")
+            f.write("=" * 55 + "\n\n")
+
+            # ===== DATASET =====
+            f.write("Dataset:\n")
+            f.write("- AEP_hourly.csv\n")
+            f.write("- Hourly electricity consumption\n\n")
+
+            # ===== METRICS =====
+            f.write("Evaluation metrics:\n")
+            f.write("- MAE  : Mean Absolute Error\n")
+            f.write("- RMSE : Root Mean Squared Error\n")
+            f.write("- MAPE : Mean Absolute Percentage Error\n\n")
+
+            # ===== TABLE =====
+            f.write("Model performance:\n")
+            f.write("-" * 55 + "\n")
+            f.write(f"{'Model':<15}{'MAE':>12}{'RMSE':>12}{'MAPE (%)':>12}\n")
+            f.write("-" * 55 + "\n")
+            f.write(
+                f"{'XGBoost':<15}"
+                f"{xgb_metrics['MAE']:>12.4f}"
+                f"{xgb_metrics['RMSE']:>12.4f}"
+                f"{xgb_metrics['MAPE']:>12.2f}\n"
+            )
+            f.write(
+                f"{'Random Forest':<15}"
+                f"{rf_metrics['MAE']:>12.4f}"
+                f"{rf_metrics['RMSE']:>12.4f}"
+                f"{rf_metrics['MAPE']:>12.2f}\n\n"
+            )
+
+            # ===== CONCLUSION =====
+            f.write("Conclusion:\n")
+            f.write("-" * 55 + "\n")
+
+            better_model = (
+                "XGBoost"
+                if xgb_metrics["RMSE"] < rf_metrics["RMSE"]
+                else "Random Forest"
+            )
+
+            f.write(
+                f"Based on RMSE, the better performing model is: {better_model}\n"
+            )
+
+        logger.info(f"Model comparison saved -> {MODEL_COMPARISON_TXT}")
+
+    except Exception as e:
+        logger.exception("TASK – Model comparison failed")
+
+
 
     logger.info("=========== END XGBOOST PIPELINE ===========")
 
