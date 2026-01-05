@@ -534,7 +534,7 @@ def main():
         rf_metrics = read_metrics_from_txt(RF_EVAL_TXT)
 
         # =====================================================
-        # OUTPUT FILE (CÔ SẼ MỞ FILE NÀY)
+        # OUTPUT FILE
         # =====================================================
         MODEL_COMPARISON_TXT = os.path.join(
             BASE_DIR,
