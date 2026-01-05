@@ -25,7 +25,7 @@ LOG_DIR = os.path.join(
     "machine_learning_model",
     "logs",
     "XGBoost_model",
-    "AEPhourly"
+    "FEhourly"
 )
 # ===== RANDOM FOREST EVALUATION FILE (FROM RF PIPELINE) =====
 RF_EVAL_TXT = os.path.join(
@@ -33,8 +33,8 @@ RF_EVAL_TXT = os.path.join(
     "machine_learning_model",
     "logs",
     "RandomForest_model",
-    "AEPhourly",
-    "run_20260104_183518",
+    "FEhourly",
+    "run_20260105_072159",
     "evaluation_metrics.txt"
 )
 
@@ -46,7 +46,7 @@ RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
 os.makedirs(RUN_DIR, exist_ok=True)
 
-DATA_PATH = os.path.join(DATA_DIR, "AEP_hourly.csv")
+DATA_PATH = os.path.join(DATA_DIR, "FE_hourly.csv")
 LOG_FILE = os.path.join(RUN_DIR, f"xgboost_pipeline_{RUN_TIME}.log")
 INFO_TXT = os.path.join(RUN_DIR, f"data_check_{RUN_TIME}.txt")
 FORECAST_TXT = os.path.join(RUN_DIR, f"multi_step_forecast_{RUN_TIME}.txt")
@@ -104,7 +104,7 @@ def check_data_quality(df: pd.DataFrame):
     freq = pd.infer_freq(df.index)
 
     with open(INFO_TXT, "w", encoding="utf-8") as f:
-        f.write("DATA QUALITY CHECK – AEP_hourly\n")
+        f.write("DATA QUALITY CHECK – FE_hourly\n")
         f.write("=" * 50 + "\n\n")
         f.write(f"Missing values: {missing}\n")
         f.write(f"Inferred frequency: {freq}\n")
@@ -541,7 +541,7 @@ def main():
             "machine_learning_model",
             "logs",
             "XGBoost_model",
-            "AEPhourly",
+            "FEhourly",
             "model_comparison.txt"
         )
 
@@ -549,12 +549,12 @@ def main():
         # WRITE FILE
         # =====================================================
         with open(MODEL_COMPARISON_TXT, "w", encoding="utf-8") as f:
-            f.write("MODEL COMPARISON – AEP HOURLY ENERGY DATASET\n")
+            f.write("MODEL COMPARISON – FE HOURLY ENERGY DATASET\n")
             f.write("=" * 55 + "\n\n")
 
             # ===== DATASET =====
             f.write("Dataset:\n")
-            f.write("- AEP_hourly.csv\n")
+            f.write("- FE_hourly.csv\n")
             f.write("- Hourly electricity consumption\n\n")
 
             # ===== METRICS =====

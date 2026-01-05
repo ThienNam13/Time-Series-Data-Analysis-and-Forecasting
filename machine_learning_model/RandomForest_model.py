@@ -23,7 +23,7 @@ LOG_DIR = os.path.join(
     "machine_learning_model",
     "logs",
     "RandomForest_model",
-    "AEPhourly"
+    "FEhourly"
 )
 
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -32,7 +32,7 @@ RUN_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
 RUN_DIR = os.path.join(LOG_DIR, f"run_{RUN_TIME}")
 os.makedirs(RUN_DIR, exist_ok=True)
 
-DATA_PATH = os.path.join(DATA_DIR, "AEP_hourly.csv")
+DATA_PATH = os.path.join(DATA_DIR, "FE_hourly.csv")
 
 LOG_FILE = os.path.join(RUN_DIR, "random_forest.log")
 MODEL_INFO_TXT = os.path.join(RUN_DIR, "model_info.txt")
