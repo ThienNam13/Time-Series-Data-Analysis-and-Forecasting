@@ -65,6 +65,8 @@ ACF_PATH = os.path.join(RUN_DIR, f"acf_{RUN_TIME}.png")
 PACF_PATH = os.path.join(RUN_DIR, f"pacf_{RUN_TIME}.png")
 ACF_PACF_TXT = os.path.join(RUN_DIR, f"ACF_PACF_Analysis_{RUN_TIME}.txt")
 ZTABLE_PATH = os.path.join(RUN_DIR, f"z_table_{RUN_TIME}.txt")
+MODEL_COMPARE_TXT = os.path.join(RUN_DIR, f"arima_grid_search_{RUN_TIME}.txt")
+MODEL_COMPARE_CSV = os.path.join(RUN_DIR, f"arima_grid_search_{RUN_TIME}.csv")
 # thêm path cho 5. xây dựng mô hình ARIMA
 MODEL_SUMMARY_PATH = os.path.join(RUN_DIR, f"model_summary_{RUN_TIME}.txt")
 FORECAST_PLOT_PATH = os.path.join(RUN_DIR, f"forecast_{RUN_TIME}.png")
@@ -271,24 +273,62 @@ def plot_acf_pacf(series: pd.Series):
         raise
 # Hàm tính Z-TABLE + CONFIDENCE
 def write_z_table(series: pd.Series):
-    """Compute confidence intervals and export z table."""
+    """
+    Write full Z-table explanation + confidence thresholds
+    following lecturer's reference format.
+    """
     n = len(series.dropna())
-    z90 = 1.645 / sqrt(n)
-    z95 = 1.96 / sqrt(n)
-    z99 = 2.576 / sqrt(n)
+
+    # Z-scores (standard normal distribution)
+    z_scores = {
+        "90%": 1.645,
+        "95%": 1.960,
+        "99%": 2.576
+    }
+
+    # Thresholds for this dataset
+    thresholds = {k: v / sqrt(n) for k, v in z_scores.items()}
 
     with open(ZTABLE_PATH, "w", encoding="utf-8") as f:
-        f.write("Z TABLE – CONFIDENCE INTERVALS\n")
-        f.write("=" * 50 + "\n\n")
+        f.write("STANDARD NORMAL DISTRIBUTION (Z-TABLE)\n")
+        f.write("Critical Values (Z-Scores) for Confidence Intervals\n")
+        f.write("=" * 80 + "\n\n")
+
+        f.write("This table shows z-scores (critical values) from the standard normal distribution.\n")
+        f.write("These values are used to calculate confidence intervals for ACF/PACF analysis.\n\n")
+
+        f.write("Formula:\n")
+        f.write("CI = ± z_α/2 / √n\n\n")
+        f.write("Where:\n")
+        f.write("- z_α/2 : critical value from standard normal distribution\n")
+        f.write("- n     : sample size\n\n")
+
+        f.write("=" * 80 + "\n")
+        f.write("COMMONLY USED CONFIDENCE LEVELS (THEORETICAL Z-SCORES)\n")
+        f.write("=" * 80 + "\n")
+        f.write("Confidence Level      Z-Score (z_α/2)\n")
+        f.write("-" * 50 + "\n")
+        for k, v in z_scores.items():
+            f.write(f"{k:<20} {v:.4f}\n")
+
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("DATASET-SPECIFIC CONFIDENCE THRESHOLDS (a10 DATASET)\n")
+        f.write("=" * 80 + "\n\n")
+
         f.write(f"Sample size (n): {n}\n\n")
-        f.write("Confidence Limits:\n")
-        f.write(f"90%  → ±{z90:.6f}\n")
-        f.write(f"95%  → ±{z95:.6f}\n")
-        f.write(f"99%  → ±{z99:.6f}\n")
+        f.write("Calculated thresholds:\n")
+        for k, v in thresholds.items():
+            f.write(f"{k} confidence interval → ±{v:.6f}\n")
 
-    logger.info(f"Z-table written to {ZTABLE_PATH}")
+        f.write("\nINTERPRETATION FOR ACF/PACF:\n")
+        f.write("- If |ACF| or |PACF| > threshold → statistically significant\n")
+        f.write("- If all values lie within thresholds → series resembles white noise\n")
 
-    return z95
+    logger.info(f"Z-table written (full theoretical + applied format) → {ZTABLE_PATH}")
+
+    # Return 95% CI for downstream ACF/PACF analysis
+    return thresholds["95%"]
+
 # Hàm phân tích ACF – PACF và gợi ý p q
 def analyze_acf_pacf(series: pd.Series, ci_threshold: float):
     """Analyze ACF & PACF to determine ARIMA p & q"""
@@ -366,7 +406,78 @@ def fit_arima_model(train, order):
     except Exception as e:
         logger.error(f"Failed to fit ARIMA model: {e}")
         raise
+# HÀM KHẢO SÁT HỆ SỐ
+def arima_grid_search(series, d=1, p_range=range(4), q_range=range(4), train_ratio=0.8):
+    """
+    Grid search ARIMA(p,d,q) with p,q in given ranges.
+    Compare using AIC, BIC, RMSE, MAPE.
+    """
 
+    logger.info("START ARIMA GRID SEARCH (p,q ∈ {0..3}, d=1)")
+
+    # Train / Test split
+    train, test = split_train_test(series, train_ratio)
+
+    results = []
+
+    for p in p_range:
+        for q in q_range:
+            try:
+                order = (p, d, q)
+                logger.info(f"Testing ARIMA{order}")
+
+                model = ARIMA(train, order=order)
+                model_fit = model.fit()
+
+                forecast = model_fit.forecast(steps=len(test))
+
+                rmse = np.sqrt(mean_squared_error(test, forecast))
+                mae = mean_absolute_error(test, forecast)
+                mape = mean_absolute_percentage_error(test, forecast) * 100
+
+                results.append({
+                    "p": p,
+                    "d": d,
+                    "q": q,
+                    "AIC": model_fit.aic,
+                    "BIC": model_fit.bic,
+                    "MAE": mae,
+                    "RMSE": rmse,
+                    "MAPE": mape
+                })
+
+                logger.info(
+                    f"ARIMA{order} | AIC={model_fit.aic:.2f}, "
+                    f"BIC={model_fit.bic:.2f}, RMSE={rmse:.4f}, MAPE={mape:.2f}%"
+                )
+
+            except Exception as e:
+                logger.warning(f"ARIMA({p},{d},{q}) failed: {e}")
+
+    # Convert to DataFrame
+    df_results = pd.DataFrame(results)
+
+    # Save CSV
+    df_results.to_csv(MODEL_COMPARE_CSV, index=False)
+
+    # Save TXT summary
+    with open(MODEL_COMPARE_TXT, "w", encoding="utf-8") as f:
+        f.write("ARIMA GRID SEARCH RESULTS (p,q ∈ {0..3}, d = 1)\n")
+        f.write("=" * 70 + "\n\n")
+        f.write(df_results.sort_values("AIC").to_string(index=False))
+        f.write("\n\n")
+        f.write("Model selection criteria:\n")
+        f.write("- Prefer lower AIC/BIC\n")
+        f.write("- Prefer lower RMSE/MAPE\n")
+        f.write("- d fixed = 1 based on ADF test\n")
+
+    logger.info(f"Grid search results saved:")
+    logger.info(f"- CSV: {MODEL_COMPARE_CSV}")
+    logger.info(f"- TXT: {MODEL_COMPARE_TXT}")
+
+    logger.info("END ARIMA GRID SEARCH")
+
+    return df_results
 #5.3 RESIDUAL DIAGNOSTICS (vẽ residual, ACF residual, kiểm tra mean ~ 0)
 def residual_diagnostics(model_fit):
     residuals = model_fit.resid
@@ -482,6 +593,18 @@ def main():
     # ---------------------------------------------------------
     train, test = split_train_test(series)
     logger.info("Task 5.1: Train/Test split completed (80/20, no shuffle)")
+    
+    # ---------------------------------------------------------
+    # (EXTRA) GRID SEARCH ARIMA(p,d,q)
+    # ---------------------------------------------------------
+    grid_results = arima_grid_search(
+        series=series,
+        d=1,
+        p_range=range(4),
+        q_range=range(4)
+    )
+
+    logger.info("ARIMA grid search completed")
 
     # ---------------------------------------------------------
     # (2) FIT ARIMA MODEL

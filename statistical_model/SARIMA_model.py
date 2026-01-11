@@ -274,8 +274,8 @@ def compare_models(series, model_specs=None, test_size=12):
     """
     if model_specs is None:
         model_specs = [
-            ((1, 0, 1), (0, 0, 0, 0), "ARIMA(1,0,1)"),
-            ((2, 0, 1), (0, 0, 0, 0), "ARIMA(2,0,1)"),
+            ((1, 1, 1), (0, 0, 0, 0), "ARIMA(1,1,1)"),
+            ((2, 1, 1), (0, 0, 0, 0), "ARIMA(2,1,1)"),
             ((1, 1, 1), (1, 1, 1, 12), "SARIMA(1,1,1)(1,1,1,12)"),
         ]
 
@@ -407,8 +407,8 @@ def main():
 
     # So sánh một số cấu hình mô hình và lưu bảng kết quả (CSV) + log tiếng Việt
     specs = [
-        ((1, 0, 1), (0, 0, 0, 0), "ARIMA(1,0,1)"),
-        ((2, 0, 1), (0, 0, 0, 0), "ARIMA(2,0,1)"),
+        ((1, 1, 1), (0, 0, 0, 0), "ARIMA(1,1,1)"),
+        ((2, 1, 1), (0, 0, 0, 0), "ARIMA(2,1,1)"),
         ((1, 1, 1), (1, 1, 1, 12), "SARIMA(1,1,1)(1,1,1,12)"),
     ]
     rows, csv_path, vi_log = compare_models(series, model_specs=specs, test_size=12)
