@@ -20,6 +20,6 @@ Thumbs.db
 
 # ML generated artifacts
 machine_learning_model/logs/
-
+*.csv
 *.png
 *.log
