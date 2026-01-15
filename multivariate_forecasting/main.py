@@ -7,6 +7,13 @@ from datetime import datetime
 from data_loader import load_and_prepare_multivariate_data
 from sklearn.preprocessing import StandardScaler
 
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.api import VAR
+from models.var_model import (
+    make_stationary,
+    train_var_model,
+    forecast_var
+)
 # =====================================================
 # TẠO THƯ MỤC LOG CHO MỖI LẦN CHẠY
 # =====================================================

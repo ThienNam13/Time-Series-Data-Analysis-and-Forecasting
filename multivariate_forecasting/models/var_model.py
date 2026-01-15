@@ -1,116 +1,79 @@
-import pandas as pd
 import numpy as np
-import os
-import logging
-
+import pandas as pd
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.stattools import adfuller
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# ===================== CONFIG =====================
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
 
-DATA_FILE = os.path.join(LOG_DIR, "feature_engineered_data.csv")
-RESULT_FILE = os.path.join(LOG_DIR, "var_forecast.csv")
-
-TARGET_COL = "load"
-VAR_COLS = ["load", "temperature", "humidity", "wind_speed"]
-
-TRAIN_RATIO = 0.8
-MAX_LAG = 24
-
-# ===================== LOGGING =====================
-logging.basicConfig(
-    filename=os.path.join(LOG_DIR, "var_model.log"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# ===================== FUNCTIONS =====================
-def adf_test(series, name):
-    result = adfuller(series, autolag="AIC")
+def adf_test(series, name="", log_file=None):
+    result = adfuller(series.dropna())
     p_value = result[1]
-    logging.info(f"ADF Test - {name}: p-value = {p_value:.4f}")
-    return p_value < 0.05
+
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"ADF Test - {name}: p-value = {p_value:.5f}\n")
+
+    return p_value
 
 
-def make_stationary(df):
-    stationary = True
+def make_stationary(df, log_file=None):
     df_diff = df.copy()
+    need_diff = False
+
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("\n=== ADF TEST ===\n")
 
     for col in df.columns:
-        if not adf_test(df[col], col):
-            df_diff[col] = df[col].diff()
-            stationary = False
-            logging.info(f"Differencing applied to {col}")
+        p_value = adf_test(df[col], col, log_file)
+        if p_value > 0.05:
+            need_diff = True
 
-    df_diff.dropna(inplace=True)
-    return df_diff, stationary
-
-
-def train_test_split(df, ratio):
-    split = int(len(df) * ratio)
-    return df.iloc[:split], df.iloc[split:]
-
-
-# ===================== MAIN =====================
-def main():
-    logging.info("START VAR MODEL")
-
-    # Load data (chỉ dùng biến gốc)
-    df = pd.read_csv(DATA_FILE, index_col=0)
-    df = df[VAR_COLS]
-
-    logging.info(f"Original data shape: {df.shape}")
-
-    # Stationarity check
-    df_stationary, is_stationary = make_stationary(df)
-
-    if is_stationary:
-        logging.info("All series are stationary")
+    if need_diff:
+        if log_file:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write("\nChuỗi không dừng → Thực hiện differencing bậc 1\n")
+        df_diff = df.diff().dropna()
     else:
-        logging.info("Non-stationary series detected → differencing applied")
+        if log_file:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write("\nTất cả chuỗi đều dừng\n")
 
-    # Train / Test split
-    train_df, test_df = train_test_split(df_stationary, TRAIN_RATIO)
+    return df_diff
 
-    #  Lag order selection
+
+def train_var_model(
+    train_df,
+    max_lag=24,
+    criterion="bic",
+    log_file=None
+):
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("\n=== VAR LAG SELECTION ===\n")
+
     model = VAR(train_df)
-    lag_selection = model.select_order(MAX_LAG)
+    lag_order_results = model.select_order(max_lag)
 
-    selected_lag = lag_selection.aic
-    logging.info(f"Selected lag (AIC): {selected_lag}")
+    selected_lag = getattr(lag_order_results, criterion)
 
-    #  Train VAR
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"Chọn lag = {selected_lag} theo {criterion.upper()}\n")
+
     var_model = model.fit(selected_lag)
-    logging.info("VAR model fitted")
 
-    # Forecast
-    steps = len(test_df)
-    forecast = var_model.forecast(train_df.values, steps=steps)
+    return var_model
+
+
+def forecast_var(model, train_df, steps):
+    forecast = model.forecast(
+        y=train_df.values[-model.k_ar:],
+        steps=steps
+    )
 
     forecast_df = pd.DataFrame(
         forecast,
-        columns=VAR_COLS,
-        index=test_df.index
+        columns=train_df.columns
     )
 
-    # Evaluation (ONLY load)
-    y_true = test_df[TARGET_COL]
-    y_pred = forecast_df[TARGET_COL]
-
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-
-    logging.info(f"VAR Load MAE: {mae:.4f}")
-    logging.info(f"VAR Load RMSE: {rmse:.4f}")
-
-    # Save forecast
-    forecast_df.to_csv(RESULT_FILE)
-    logging.info(f"Forecast saved to {RESULT_FILE}")
-    logging.info("VAR MODEL COMPLETED")
-
-
-if __name__ == "__main__":
-        main()
+    return forecast_df
