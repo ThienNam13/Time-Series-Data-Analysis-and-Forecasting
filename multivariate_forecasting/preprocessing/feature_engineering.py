@@ -1,106 +1,59 @@
-import sys
+import pandas as pd
 import os
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-import pandas as pd
-import numpy as np
-import logging
-import matplotlib.pyplot as plt
-
-from data_loader import load_and_prepare_multivariate_data
-
-# ===================== CONFIG =====================
-LAG_WINDOW = 24
-ROLLING_MEAN_WINDOW = 6
-ROLLING_STD_WINDOW = 24
-
-FEATURE_COLS = ["load", "temperature", "humidity", "wind_speed"]
-
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-DATA_DIR = os.path.join(BASE_DIR, "data")
-
-os.makedirs(LOG_DIR, exist_ok=True)
-
-# ===================== LOGGING =====================
-logging.basicConfig(
-    filename=os.path.join(LOG_DIR, "feature_engineering.log"),
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# ===================== FUNCTIONS =====================
-def create_lag_features(df, cols, lag_window):
+def create_lag_features(
+    df,
+    variables,
+    lags=24,
+    log_file=None
+):
+    """
+    Tạo lag features cho danh sách biến
+    """
     df_lag = df.copy()
-    for col in cols:
-        for lag in range(1, lag_window + 1):
-            df_lag[f"{col}_lag_{lag}"] = df_lag[col].shift(lag)
+
+    for var in variables:
+        for lag in range(1, lags + 1):
+            df_lag[f"{var}_lag_{lag}"] = df_lag[var].shift(lag)
+
+    rows_before = len(df_lag)
+    df_lag = df_lag.dropna()
+    rows_after = len(df_lag)
+
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("=== LAG FEATURES ===\n")
+            f.write(f"Lag window (L): {lags}\n")
+            f.write(f"Số biến gốc: {len(variables)}\n")
+            f.write(f"Tổng số lag features: {lags * len(variables)}\n")
+            f.write(f"Số dòng bị drop: {rows_before - rows_after}\n\n")
+
     return df_lag
 
 
-def create_rolling_features(df):
+def create_rolling_features(
+    df,
+    log_file=None
+):
     """
-    Rolling features chỉ dùng cho XGBoost
+    Rolling features (CHỈ dùng cho XGBoost)
     """
-    df_feat = df.copy()
+    df_roll = df.copy()
 
-    df_feat["load_roll_mean_6h"] = df_feat["load"].rolling(ROLLING_MEAN_WINDOW).mean()
-    df_feat["load_roll_std_24h"] = df_feat["load"].rolling(ROLLING_STD_WINDOW).std()
-    df_feat["load_trend_24h"] = df_feat["load"] - df_feat["load"].shift(24)
+    df_roll["load_roll_mean_6"] = df_roll["load"].rolling(window=6).mean()
+    df_roll["load_roll_std_24"] = df_roll["load"].rolling(window=24).std()
+    df_roll["load_trend_24"] = df_roll["load"] - df_roll["load"].shift(24)
 
-    return df_feat
+    rows_before = len(df_roll)
+    df_roll = df_roll.dropna()
+    rows_after = len(df_roll)
 
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("=== ROLLING FEATURES (XGBOOST ONLY) ===\n")
+            f.write("Rolling mean: 6 giờ\n")
+            f.write("Rolling std: 24 giờ\n")
+            f.write("Load trend: load(t) - load(t-24)\n")
+            f.write(f"Số dòng bị drop: {rows_before - rows_after}\n\n")
 
-def plot_sample_features(df):
-    plt.figure(figsize=(10, 5))
-    plt.plot(df["load"], label="Load")
-    plt.plot(df["load_roll_mean_6h"], label="Rolling Mean 6h")
-    plt.legend()
-    plt.title("Load vs Rolling Mean Feature")
-    plt.tight_layout()
-    plt.savefig(os.path.join(LOG_DIR, "rolling_feature_example.png"))
-    plt.close()
-
-
-# ===================== MAIN =====================
-def main():
-    logging.info("START FEATURE ENGINEERING")
-
-    # ===== LOAD & PREPARE MULTIVARIATE DATA =====
-    df = load_and_prepare_multivariate_data(
-        load_path=os.path.join(DATA_DIR, "LD2011_2014.txt"),
-        weather_path=os.path.join(DATA_DIR, "weather.csv"),
-        freq="H"
-    )
-
-    original_rows = df.shape[0]
-
-    # ===== LAG FEATURES (ML & DL) =====
-    df_lagged = create_lag_features(df, FEATURE_COLS, LAG_WINDOW)
-
-    # ===== ROLLING FEATURES (ONLY XGBOOST) =====
-    df_features = create_rolling_features(df_lagged)
-
-    # ===== DROP NA =====
-    df_features.dropna(inplace=True)
-    dropped_rows = original_rows - df_features.shape[0]
-
-    # ===== LOGGING =====
-    logging.info(f"Lag window (L): {LAG_WINDOW}")
-    logging.info(f"Total features after FE: {df_features.shape[1]}")
-    logging.info(f"Rows dropped due to lag/rolling: {dropped_rows}")
-
-    # ===== SAVE OUTPUT =====
-    df_features.to_csv(os.path.join(LOG_DIR, "feature_engineered_data.csv"))
-
-    # ===== SAVE PLOT =====
-    plot_sample_features(df_features)
-
-    logging.info("FEATURE ENGINEERING COMPLETED")
-
-
-if __name__ == "__main__":
-    main()
+    return df_roll

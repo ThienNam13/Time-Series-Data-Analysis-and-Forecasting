@@ -234,3 +234,136 @@ write_log(f"- Thời gian: {test.index.min()} -> {test.index.max()}\n")
 
 print(f"Hoàn thành Data Understanding & Preprocessing.")
 print(f"Kết quả được lưu tại: {log_dir}")
+
+# =====================================================
+# 12. FEATURE ENGINEERING - LAG FEATURES (ML & DL)
+# =====================================================
+write_log("\n=== FEATURE ENGINEERING: LAG FEATURES ===")
+
+L = 24
+lag_features = []
+
+fe_data = data.copy()
+
+for var in ["load", "temperature", "humidity", "wind_speed"]:
+    for l in range(1, L + 1):
+        col_name = f"{var}_lag_{l}"
+        fe_data[col_name] = fe_data[var].shift(l)
+        lag_features.append(col_name)
+
+rows_before = len(fe_data)
+fe_data.dropna(inplace=True)
+rows_after = len(fe_data)
+
+write_log(f"Số lag (L): {L}")
+write_log(f"Số feature lag tạo ra: {len(lag_features)}")
+write_log(f"Số dòng bị drop do lag: {rows_before - rows_after}\n")
+
+# =====================================================
+# 13.FEATURE ENGINEERING - ROLLING FEATURES (XGBOOST)
+# =====================================================
+write_log("=== FEATURE ENGINEERING: ROLLING FEATURES (XGBOOST) ===")
+
+fe_data["load_roll_mean_6"] = fe_data["load"].rolling(window=6).mean()
+fe_data["load_roll_std_24"] = fe_data["load"].rolling(window=24).std()
+fe_data["load_trend_24"] = fe_data["load"] - fe_data["load"].shift(24)
+
+rows_before = len(fe_data)
+fe_data.dropna(inplace=True)
+rows_after = len(fe_data)
+
+write_log("Rolling features được tạo:")
+write_log("- Rolling mean (6h)")
+write_log("- Rolling std (24h)")
+write_log("- Load trend: load(t) - load(t-24)")
+write_log(f"Số dòng bị drop sau rolling: {rows_before - rows_after}\n")
+print("Hoàn thành Feature Engineering.")
+
+# =====================================================
+# 14. VAR MODEL - STATIONARITY CHECK (ADF)
+# =====================================================
+from statsmodels.tsa.stattools import adfuller
+
+def adf_test(series, name):
+    result = adfuller(series.dropna())
+    p_value = result[1]
+    write_log(f"ADF Test - {name}: p-value = {p_value:.5f}")
+    return p_value
+
+write_log("\n=== ADF TEST (VAR) ===")
+
+var_vars = ["load", "temperature", "humidity", "wind_speed"]
+var_data = data[var_vars].copy()
+
+need_diff = False
+for col in var_vars:
+    if adf_test(var_data[col], col) > 0.05:
+        need_diff = True
+
+if need_diff:
+    write_log(" Chuỗi không dừng, thực hiện differencing bậc 1\n")
+    var_data = var_data.diff().dropna()
+else:
+    write_log(" Tất cả chuỗi đều dừng\n")
+print("Hoàn thành ADF Test cho VAR Model.")
+
+# =====================================================
+# 15. VAR - TRAIN / TEST SPLIT
+# =====================================================
+n_var = len(var_data)
+train_size_var = int(n_var * 0.7)
+
+var_train = var_data.iloc[:train_size_var]
+var_test = var_data.iloc[train_size_var:]
+
+write_log("=== VAR DATA SPLIT ===")
+write_log(f"Train: {var_train.index.min()} -> {var_train.index.max()}")
+write_log(f"Test: {var_test.index.min()} -> {var_test.index.max()}\n")
+print("Hoàn thành Train/Test Split cho VAR Model.")
+
+# =====================================================
+# 16.VAR - LAG SELECTION & TRAINING
+# =====================================================
+from statsmodels.tsa.api import VAR
+
+max_lag = 24
+model = VAR(var_train)
+
+lag_results = model.select_order(max_lag)
+selected_lag = lag_results.bic
+
+write_log("=== VAR LAG SELECTION ===")
+write_log(str(lag_results.summary()))
+write_log(f"→ Chọn lag = {selected_lag} theo BIC\n")
+
+var_model = model.fit(selected_lag)
+write_log("VAR model đã được huấn luyện.\n")
+print("Hoàn thành VAR Model Training.")
+
+# =====================================================
+# 17.VAR - FORECAST & EVALUATION (LOAD ONLY)
+# =====================================================
+forecast_steps = len(var_test)
+
+forecast = var_model.forecast(
+    y=var_train.values[-selected_lag:],
+    steps=forecast_steps
+)
+
+forecast_df = pd.DataFrame(
+    forecast,
+    index=var_test.index,
+    columns=var_vars
+)
+
+plt.figure(figsize=(12, 5))
+plt.plot(var_test.index, var_test["load"], label="Actual Load")
+plt.plot(forecast_df.index, forecast_df["load"], label="VAR Forecast")
+plt.legend()
+plt.title("VAR Forecast vs Actual (Load)")
+plt.tight_layout()
+plt.savefig(os.path.join(log_dir, "var_forecast_load.png"))
+plt.close()
+
+write_log("=== VAR FORECAST ===")
+write_log(f"Số bước forecast: {forecast_steps}")
