@@ -270,7 +270,7 @@ def compare_models(series, model_specs=None, test_size=12):
     """
     So sánh nhiều cấu hình ARIMA/SARIMA.
     - `model_specs`: list of tuples (order, seasonal_order, name)
-    - Trả về list rows và lưu file CSV + log tiếng Việt.
+    - Trả về list rows và lưu file CSV.
     """
     if model_specs is None:
         model_specs = [
@@ -405,7 +405,7 @@ def main():
     metrics = forecast_and_evaluate(series, order=(1,1,1), seasonal_order=(1,1,1,12), test_size=12)
     logger.info(f"Forecast metrics: MAE={metrics['mae']:.4f}, RMSE={metrics['rmse']:.4f}, MAPE={metrics['mape']}")
 
-    # So sánh một số cấu hình mô hình và lưu bảng kết quả (CSV) + log tiếng Việt
+    # So sánh một số cấu hình mô hình và lưu bảng kết quả (CSV)
     specs = [
         ((1, 1, 1), (0, 0, 0, 0), "ARIMA(1,1,1)"),
         ((2, 1, 1), (0, 0, 0, 0), "ARIMA(2,1,1)"),
