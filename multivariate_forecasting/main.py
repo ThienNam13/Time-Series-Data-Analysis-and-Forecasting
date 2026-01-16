@@ -14,6 +14,8 @@ from models.var_model import (
     train_var_model,
     forecast_var
 )
+from models.xgboost_model import train_xgboost
+
 # =====================================================
 # TẠO THƯ MỤC LOG CHO MỖI LẦN CHẠY
 # =====================================================
@@ -374,3 +376,51 @@ plt.close()
 
 write_log("=== VAR FORECAST ===")
 write_log(f"Số bước forecast: {forecast_steps}")
+
+# =====================================================
+# 18. XGBOOST MODEL (Machine Learning)
+# =====================================================
+write_log("\n=== XGBOOST MODEL ===")
+
+"""
+Input:
+- Vector phẳng từ cửa sổ lag:
+  [load_lag_1 ... load_lag_L,
+   temperature_lag_1 ...,
+   humidity_lag_1 ...,
+   wind_speed_lag_1 ...]
+
+Output:
+- y = load
+"""
+
+# Chia lại dữ liệu feature engineering theo thời gian
+n_fe = len(fe_data)
+train_size = int(n_fe * 0.70)
+val_size = int(n_fe * 0.15)
+
+xgb_train = fe_data.iloc[:train_size]
+xgb_val = fe_data.iloc[train_size:train_size + val_size]
+xgb_test = fe_data.iloc[train_size + val_size:]
+
+write_log("XGBoost data split:")
+write_log(f"- Train size: {len(xgb_train)}")
+write_log(f"- Validation size: {len(xgb_val)}")
+write_log(f"- Test size: {len(xgb_test)}\n")
+
+# Train XGBoost
+y_pred_xgb, rmse_xgb, mae_xgb, mape_xgb = train_xgboost(
+    train_df=xgb_train,
+    val_df=xgb_val,
+    test_df=xgb_test,
+    log_dir=log_dir,
+    max_depth=6,
+    n_estimators=500
+)
+
+write_log("XGBoost Results:")
+write_log(f"- RMSE: {rmse_xgb:.4f}")
+write_log(f"- MAE: {mae_xgb:.4f}")
+write_log(f"- MAPE: {mape_xgb:.2f}%\n")
+
+print("Hoàn thành XGBoost Model.")
