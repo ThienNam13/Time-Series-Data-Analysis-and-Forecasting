@@ -16,6 +16,7 @@ from models.var_model import (
 )
 from models.var_model import evaluate_forecast
 from models.xgboost_model import train_xgboost
+from models.lstm_model import train_lstm
 
 # =====================================================
 # TẠO THƯ MỤC LOG CHO MỖI LẦN CHẠY
@@ -439,3 +440,49 @@ write_log(f"- MAE: {mae_xgb:.4f}")
 write_log(f"- MAPE: {mape_xgb:.2f}%\n")
 
 print("Hoàn thành XGBoost Model.")
+
+# =====================================================
+# 19. LSTM MODEL (Deep Learning)
+# =====================================================
+write_log("\n=== LSTM MODEL ===")
+
+"""
+Input:
+- Tensor 3D (samples, 24 timesteps, 4 variables)
+- Variables: load, temperature, humidity, wind_speed
+
+Output:
+- y = load
+"""
+
+# LSTM sử dụng dữ liệu đã scale (data_scaled)
+n_lstm = len(data_scaled)
+
+train_size = int(n_lstm * 0.70)
+val_size = int(n_lstm * 0.15)
+
+lstm_train = data_scaled.iloc[:train_size]
+lstm_val = data_scaled.iloc[train_size:train_size + val_size]
+lstm_test = data_scaled.iloc[train_size + val_size:]
+
+write_log("LSTM data split:")
+write_log(f"- Train size: {len(lstm_train)}")
+write_log(f"- Validation size: {len(lstm_val)}")
+write_log(f"- Test size: {len(lstm_test)}\n")
+
+# Train LSTM
+y_pred_lstm, rmse_lstm, mae_lstm, mape_lstm = train_lstm(
+    train_df=lstm_train,
+    val_df=lstm_val,
+    test_df=lstm_test,
+    log_dir=log_dir,
+    window_size=24,
+    epochs=50
+)
+
+write_log("LSTM Results:")
+write_log(f"- RMSE: {rmse_lstm:.4f}")
+write_log(f"- MAE: {mae_lstm:.4f}")
+write_log(f"- MAPE: {mape_lstm*100:.2f}%\n")
+
+print("Hoàn thành LSTM Model.")
