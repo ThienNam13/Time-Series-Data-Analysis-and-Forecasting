@@ -14,6 +14,7 @@ from models.var_model import (
     train_var_model,
     forecast_var
 )
+from models.var_model import evaluate_forecast
 from models.xgboost_model import train_xgboost
 
 # =====================================================
@@ -376,6 +377,20 @@ plt.close()
 
 write_log("=== VAR FORECAST ===")
 write_log(f"Số bước forecast: {forecast_steps}")
+
+y_true_load = var_test["load"].values
+y_pred_load = forecast_df["load"].values
+
+metrics_var = evaluate_forecast(
+    y_true=y_true_load,
+    y_pred=y_pred_load,
+    log_file=log_file,
+    model_name="VAR"
+)
+
+print("KẾT QUẢ ĐÁNH GIÁ VAR:")
+for k, v in metrics_var.items():
+    print(f"{k}: {v:.4f}")
 
 # =====================================================
 # 18. XGBOOST MODEL (Machine Learning)

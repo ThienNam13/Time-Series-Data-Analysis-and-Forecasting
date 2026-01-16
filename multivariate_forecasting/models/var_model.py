@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.stattools import adfuller
-
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import numpy as np
 
 def adf_test(series, name="", log_file=None):
     result = adfuller(series.dropna())
@@ -77,3 +78,30 @@ def forecast_var(model, train_df, steps):
     )
 
     return forecast_df
+
+def evaluate_forecast(
+    y_true,
+    y_pred,
+    log_file=None,
+    model_name="VAR"
+):
+    """
+    Đánh giá dự báo bằng RMSE, MAE, MAPE
+    """
+
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"\n=== {model_name} EVALUATION ===\n")
+            f.write(f"RMSE: {rmse:.4f}\n")
+            f.write(f"MAE : {mae:.4f}\n")
+            f.write(f"MAPE: {mape:.2f}%\n\n")
+
+    return {
+        "RMSE": rmse,
+        "MAE": mae,
+        "MAPE": mape
+    }
