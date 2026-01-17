@@ -125,9 +125,38 @@ plt.tight_layout()
 plt.savefig(os.path.join(log_dir, "load_time_series.png"))
 plt.close()
 
+# =====================================================
+# 7. BIỂU ĐỒ CHU KỲ DAILY SEASONALITY
+# =====================================================
+data["hour"] = data.index.hour
+hourly_avg = data.groupby("hour")["load"].mean()
+
+plt.figure(figsize=(8,4))
+plt.plot(hourly_avg)
+plt.title("Average Load by Hour (Daily Seasonality)")
+plt.xlabel("Hour of Day")
+plt.ylabel("Average Load")
+plt.tight_layout()
+plt.savefig(os.path.join(log_dir, "seasonality_daily.png"))
+plt.close()
 
 # =====================================================
-# 7. BIỂU ĐỒ LOAD VS TEMPERATURE
+# 8. BIỂU ĐỒ CHU KỲ WEEKLY SEASONALITY
+# =====================================================
+data["weekday"] = data.index.weekday
+weekly_avg = data.groupby("weekday")["load"].mean()
+
+plt.figure(figsize=(8,4))
+plt.plot(weekly_avg)
+plt.title("Average Load by Weekday (Weekly Seasonality)")
+plt.xlabel("Weekday (0=Mon)")
+plt.ylabel("Average Load")
+plt.tight_layout()
+plt.savefig(os.path.join(log_dir, "seasonality_weekly.png"))
+plt.close()
+
+# =====================================================
+# 9. BIỂU ĐỒ LOAD VS TEMPERATURE
 # =====================================================
 """
 - Plot load vs temperature
@@ -144,7 +173,7 @@ plt.close()
 
 
 # =====================================================
-# 8. MA TRẬN TƯƠNG QUAN
+# 10. MA TRẬN TƯƠNG QUAN
 # =====================================================
 """
 - Correlation matrix giữa:
@@ -168,7 +197,7 @@ write_log(str(corr) + "\n")
 
 
 # =====================================================
-# 9. NHẬN XÉT 
+# 11. NHẬN XÉT 
 # =====================================================
 """
 - Biến thời tiết nào liên quan mạnh với load?
@@ -184,7 +213,7 @@ write_log(
 
 
 # ===============================
-# 10. PREPROCESSING
+# 12. PREPROCESSING
 # ===============================
 write_log("=== PREPROCESSING ===")
 
@@ -192,7 +221,7 @@ features = ["load", "temperature", "humidity", "wind_speed"]
 data_pp = data[features].copy()
 
 # ===============================
-# 10.1 CHUẨN HÓA DỮ LIỆU
+# 12.1 CHUẨN HÓA DỮ LIỆU
 # ===============================
 from sklearn.preprocessing import StandardScaler
 
@@ -213,7 +242,7 @@ write_log("- Cải thiện hiệu quả VAR và XGBoost\n")
 
 
 # =====================================================
-# 11. CHIA TẬP DỮ LIỆU THEO THỜI GIAN
+# 13. CHIA TẬP DỮ LIỆU THEO THỜI GIAN
 # =====================================================
 """
 Theo đề:
@@ -247,7 +276,7 @@ print(f"Hoàn thành Data Understanding & Preprocessing.")
 print(f"Kết quả được lưu tại: {log_dir}")
 
 # =====================================================
-# 12. FEATURE ENGINEERING - LAG FEATURES (ML & DL)
+# 14. FEATURE ENGINEERING - LAG FEATURES (ML & DL)
 # =====================================================
 write_log("\n=== FEATURE ENGINEERING: LAG FEATURES ===")
 
@@ -271,7 +300,7 @@ write_log(f"Số feature lag tạo ra: {len(lag_features)}")
 write_log(f"Số dòng bị drop do lag: {rows_before - rows_after}\n")
 
 # =====================================================
-# 13.FEATURE ENGINEERING - ROLLING FEATURES (XGBOOST)
+# 15.FEATURE ENGINEERING - ROLLING FEATURES (XGBOOST)
 # =====================================================
 write_log("=== FEATURE ENGINEERING: ROLLING FEATURES (XGBOOST) ===")
 
@@ -291,7 +320,7 @@ write_log(f"Số dòng bị drop sau rolling: {rows_before - rows_after}\n")
 print("Hoàn thành Feature Engineering.")
 
 # =====================================================
-# 14. VAR MODEL - STATIONARITY CHECK (ADF)
+# 16. VAR MODEL - STATIONARITY CHECK (ADF)
 # =====================================================
 from statsmodels.tsa.stattools import adfuller
 
@@ -319,7 +348,7 @@ else:
 print("Hoàn thành ADF Test cho VAR Model.")
 
 # =====================================================
-# 15. VAR - TRAIN / TEST SPLIT
+# 17. VAR - TRAIN / TEST SPLIT
 # =====================================================
 n_var = len(var_data)
 train_size_var = int(n_var * 0.7)
@@ -333,7 +362,7 @@ write_log(f"Test: {var_test.index.min()} -> {var_test.index.max()}\n")
 print("Hoàn thành Train/Test Split cho VAR Model.")
 
 # =====================================================
-# 16.VAR - LAG SELECTION & TRAINING
+# 18.VAR - LAG SELECTION & TRAINING
 # =====================================================
 from statsmodels.tsa.api import VAR
 
@@ -352,7 +381,7 @@ write_log("VAR model đã được huấn luyện.\n")
 print("Hoàn thành VAR Model Training.")
 
 # =====================================================
-# 17.VAR - FORECAST & EVALUATION (LOAD ONLY)
+# 19.VAR - FORECAST & EVALUATION (LOAD ONLY)
 # =====================================================
 forecast_steps = len(var_test)
 
@@ -394,7 +423,7 @@ for k, v in metrics_var.items():
     print(f"{k}: {v:.4f}")
 
 # =====================================================
-# 18. XGBOOST MODEL (Machine Learning)
+# 20. XGBOOST MODEL (Machine Learning)
 # =====================================================
 write_log("\n=== XGBOOST MODEL ===")
 
@@ -442,7 +471,7 @@ write_log(f"- MAPE: {mape_xgb:.2f}%\n")
 print("Hoàn thành XGBoost Model.")
 
 # =====================================================
-# 19. LSTM MODEL (Deep Learning)
+# 21. LSTM MODEL (Deep Learning)
 # =====================================================
 write_log("\n=== LSTM MODEL ===")
 
@@ -486,3 +515,63 @@ write_log(f"- MAE: {mae_lstm:.4f}")
 write_log(f"- MAPE: {mape_lstm*100:.2f}%\n")
 
 print("Hoàn thành LSTM Model.")
+
+# =====================================================
+# 22. WALK-FORWARD BACKTESTING
+# =====================================================
+from evaluation.backtesting import (
+    walk_forward_var,
+    walk_forward_xgboost,
+    walk_forward_lstm,
+    evaluate_metrics
+)
+
+write_log("\n=== WALK-FORWARD BACKTESTING ===")
+
+# ===== VAR =====
+wf_test_var = var_test.iloc[:300]
+y_true_var, y_pred_var = walk_forward_var(var_train, wf_test_var, log_dir=log_dir)
+
+rmse_var, mae_var, mape_var = evaluate_metrics(y_true_var, y_pred_var)
+write_log("VAR Walk-forward:")
+write_log(f"RMSE: {rmse_var:.4f}")
+write_log(f"MAE : {mae_var:.4f}")
+write_log(f"MAPE: {mape_var:.2f}%\n")
+
+# ===== XGBOOST =====
+xgb_params = {
+    "objective": "reg:squarederror",
+    "max_depth": 6,
+    "eta": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "seed": 42
+}
+
+wf_test_xgb = xgb_test.iloc[:300]
+y_true_xgb, y_pred_xgb = walk_forward_xgboost(
+    xgb_train, wf_test_xgb, params=xgb_params, num_boost_round=100, log_dir=log_dir
+)
+
+rmse_xgb, mae_xgb, mape_xgb = evaluate_metrics(y_true_xgb, y_pred_xgb)
+write_log("XGBoost Walk-forward:")
+write_log(f"RMSE: {rmse_xgb:.4f}")
+write_log(f"MAE : {mae_xgb:.4f}")
+write_log(f"MAPE: {mape_xgb:.2f}%\n")
+
+
+# ===== LSTM =====
+test_subset = lstm_test.iloc[:200]
+
+y_true_lstm, y_pred_lstm = walk_forward_lstm(
+    lstm_train, test_subset,
+    window_size=24,
+    epochs=3,
+    log_dir=log_dir
+)
+
+rmse_lstm, mae_lstm, mape_lstm = evaluate_metrics(y_true_lstm, y_pred_lstm)
+write_log("LSTM Walk-forward:")
+write_log(f"RMSE: {rmse_lstm:.4f}")
+write_log(f"MAE : {mae_lstm:.4f}")
+write_log(f"MAPE: {mape_lstm:.2f}%\n")

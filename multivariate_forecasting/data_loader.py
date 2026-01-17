@@ -1,5 +1,5 @@
 import pandas as pd
-
+import matplotlib.pyplot as plt
 
 def load_electricity_data(path):
     """
@@ -94,6 +94,4 @@ def load_and_prepare_multivariate_data(
     df = merge_load_weather(load_df, weather_df)
 
     return df
-
-import matplotlib.pyplot as plt
 
