@@ -93,3 +93,19 @@ def train_lstm(
         f.write(f"MAPE: {mape*100:.2f}%\n")
 
     return y_pred, rmse, mae, mape
+
+# HÀM TẠO SEQUENCES ĐỂ DỰ BÁO WALK-FORWARD CHUẨN
+def create_sequences(data, seq_len):
+    X, y = [], []
+    for i in range(len(data) - seq_len):
+        X.append(data[i:i+seq_len])
+        y.append(data[i+seq_len, 0])  # dự báo load
+    return np.array(X), np.array(y)
+# HÀM BUILD MODEL ĐỂ DỰ BÁO WALK-FORWARD CHUẨN
+def build_lstm(input_shape):
+    model = Sequential([
+        LSTM(64, input_shape=input_shape),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse')
+    return model

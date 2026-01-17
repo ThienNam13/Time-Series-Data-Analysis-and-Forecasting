@@ -6,7 +6,7 @@ import xgboost as xgb
 from statsmodels.tsa.api import VAR
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
-from models.lstm_model import create_lstm_dataset
+from models.lstm_model import build_lstm, create_sequences
 import tensorflow as tf
 
 
@@ -65,11 +65,11 @@ def walk_forward_var(train_df, test_df, max_lag=24, log_dir=None):
 
         history = pd.concat([history, test_df.iloc[t:t+1]])
 
+        if t % 50 == 0:
+            print(f"VAR walk-forward step {t}/{len(test_df)}")
+
     y_true = test_df["load"].values
     y_pred = np.array(predictions)
-
-    if t % 50 == 0:
-        print(f"VAR walk-forward step {t}/{len(test_df)}")
 
     if log_dir:
         save_results(y_true, y_pred, "VAR", log_dir)
@@ -105,12 +105,12 @@ def walk_forward_xgboost(train_df, test_df, params, num_boost_round=300, log_dir
         predictions.append(yhat)
 
         history = pd.concat([history, test_df.iloc[t:t+1]])
+        
+        if t % 50 == 0:
+            print(f"XGBoost walk-forward step {t}/{len(test_df)}")
 
     y_true = test_df["load"].values
     y_pred = np.array(predictions)
-
-    if t % 50 == 0:
-        print(f"XGBoost walk-forward step {t}/{len(test_df)}")
 
     if log_dir:
         save_results(y_true, y_pred, "XGBoost", log_dir)
@@ -121,48 +121,37 @@ def walk_forward_xgboost(train_df, test_df, params, num_boost_round=300, log_dir
 # =========================================================
 # WALK-FORWARD FOR LSTM
 # =========================================================
-def walk_forward_lstm(train_df, test_df, window_size=24, epochs=10, batch_size=64, log_dir=None):
+def walk_forward_lstm(train_data, test_data, window_size=24, epochs=3):
+    history = train_data.copy().values
+    preds = []
 
-    history = train_df.copy()
-    predictions = []
+    for i in range(len(test_data)):
+        X_train, y_train = create_sequences(history, window_size)
 
-    n_features = train_df.shape[1]
-
-    for t in range(len(test_df)):
-
-        X_train, y_train = create_lstm_dataset(history, window_size=window_size)
-
-        model = tf.keras.Sequential([
-            tf.keras.Input(shape=(window_size, n_features)),
-            tf.keras.layers.LSTM(64, return_sequences=True),
-            tf.keras.layers.LSTM(32),
-            tf.keras.layers.Dense(1)
-        ])
-
-        model.compile(optimizer="adam", loss="mse")
-
-        model.fit(
-            X_train, y_train,
-            epochs=epochs,
-            batch_size=batch_size,
-            verbose=0
+        X_train = X_train.reshape(
+            (X_train.shape[0], X_train.shape[1], X_train.shape[2])
         )
 
-        last_window = history.values[-window_size:]
-        last_window = last_window.reshape(1, window_size, n_features)
+        model = build_lstm((window_size, history.shape[1]))
+        model.fit(X_train, y_train, epochs=epochs, verbose=0)
 
-        yhat = model.predict(last_window, verbose=0)[0, 0]
-        predictions.append(yhat)
+        last_seq = history[-window_size:]
+        last_seq = last_seq.reshape((1, window_size, history.shape[1]))
 
-        history = pd.concat([history, test_df.iloc[t:t+1]])
+        yhat = model.predict(last_seq, verbose=0)
+        preds.append(yhat[0, 0])
 
-    y_true = test_df["load"].values
-    y_pred = np.array(predictions)
+        # add true observation
+        history = np.vstack([history, test_data.iloc[i].values])
 
-    if t % 10 == 0:
-        print(f"LSTM walk-forward step {t}/{len(test_df)}")
+        if i % 10 == 0:
+            print(f"LSTM walk-forward step {i}/{len(test_data)}")
 
-    if log_dir:
-        save_results(y_true, y_pred, "LSTM", log_dir)
+    y_true = test_data["load"].values
+    return y_true, np.array(preds)
 
-    return y_true, y_pred
+def inverse_load_only(preds, scaler, n_features):
+    dummy = np.zeros((len(preds), n_features))
+    dummy[:, 0] = preds
+    inv = scaler.inverse_transform(dummy)
+    return inv[:, 0]

@@ -523,7 +523,8 @@ from evaluation.backtesting import (
     walk_forward_var,
     walk_forward_xgboost,
     walk_forward_lstm,
-    evaluate_metrics
+    evaluate_metrics,
+    inverse_load_only
 )
 
 write_log("\n=== WALK-FORWARD BACKTESTING ===")
@@ -560,17 +561,28 @@ write_log(f"MAE : {mae_xgb:.4f}")
 write_log(f"MAPE: {mape_xgb:.2f}%\n")
 
 
-# ===== LSTM =====
-test_subset = lstm_test.iloc[:200]
+# ===== LSTM WALK-FORWARD =====
+
+wf_test_lstm = lstm_test.iloc[:100]
+
+lstm_history = pd.concat([lstm_train, lstm_val])
 
 y_true_lstm, y_pred_lstm = walk_forward_lstm(
-    lstm_train, test_subset,
+    lstm_history,
+    wf_test_lstm,
     window_size=24,
-    epochs=3,
-    log_dir=log_dir
+    epochs=3
 )
 
-rmse_lstm, mae_lstm, mape_lstm = evaluate_metrics(y_true_lstm, y_pred_lstm)
+n_features = lstm_train.shape[1]
+
+y_true_lstm_inv = inverse_load_only(y_true_lstm, scaler, n_features)
+y_pred_lstm_inv = inverse_load_only(y_pred_lstm, scaler, n_features)
+
+rmse_lstm, mae_lstm, mape_lstm = evaluate_metrics(
+    y_true_lstm_inv, y_pred_lstm_inv
+)
+
 write_log("LSTM Walk-forward:")
 write_log(f"RMSE: {rmse_lstm:.4f}")
 write_log(f"MAE : {mae_lstm:.4f}")
