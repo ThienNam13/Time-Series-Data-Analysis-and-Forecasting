@@ -96,12 +96,37 @@ write_log(f"Test supervised : {test_sup.shape}\n")
 # =====================================================
 # 4. TRAIN MODELS (ONE-SHOT)
 # =====================================================
-write_log("=== TRAIN MODELS ===")
+write_log("=== TRAIN MODELS (ONE-SHOT) ===")
 
 # ---------- VAR ----------
 write_log("Training VAR model...")
 
 var_model, var_lag = train_var_model(train_scaled, max_lag=24, logger=write_log)
+
+y_pred_var_oneshot = var_model.forecast(
+    train_scaled.values[-var_lag:],
+    steps=len(test_scaled)
+)[:, 0]
+
+y_true_var_oneshot = test_scaled["load"].values
+
+# inverse-scale trước khi tính MAPE
+y_true_inv = scaler.inverse_transform(
+    np.c_[y_true_var_oneshot, np.zeros((len(y_true_var_oneshot), 3))]
+)[:, 0]
+
+y_pred_inv = scaler.inverse_transform(
+    np.c_[y_pred_var_oneshot, np.zeros((len(y_pred_var_oneshot), 3))]
+)[:, 0]
+
+rmse_var_os, mae_var_os, mape_var_os = evaluate_metrics(
+    y_true_inv, y_pred_inv
+)
+
+write_log("VAR Metrics (one-shot test):")
+write_log(f"RMSE: {rmse_var_os:.4f}")
+write_log(f"MAE : {mae_var_os:.4f}")
+write_log(f"MAPE: {mape_var_os:.2f}%\n")
 
 # ---------- XGBOOST ----------
 write_log("Training XGBoost model...")
@@ -123,6 +148,28 @@ xgb_preds, xgb_rmse, xgb_mae, xgb_mape = train_xgboost(
     logger=write_log
 )
 
+# scaled
+y_true_xgb_scaled = test_sup["load"].values
+
+# inverse-scale trước khi tính MAPE
+y_true_xgb = scaler.inverse_transform(
+    np.c_[y_true_xgb_scaled, np.zeros((len(y_true_xgb_scaled), 3))]
+)[:, 0]
+
+y_pred_xgb = scaler.inverse_transform(
+    np.c_[xgb_preds.reshape(-1, 1), np.zeros((len(xgb_preds), 3))]
+)[:, 0]
+
+# metrics
+rmse_xgb, mae_xgb, mape_xgb = evaluate_metrics(
+    y_true_xgb, y_pred_xgb
+)
+
+write_log("XGBoost Metrics (one-shot test):")
+write_log(f"RMSE: {xgb_rmse:.4f}")
+write_log(f"MAE : {xgb_mae:.4f}")
+write_log(f"MAPE: {xgb_mape:.2f}%\n")
+
 # ---------- LSTM ----------
 write_log("Training LSTM model...")
 
@@ -135,11 +182,25 @@ lstm_preds, lstm_rmse, lstm_mae, lstm_mape = train_lstm(
     window_size=WINDOW,
     epochs=30
 )
+# scaled
+y_true_lstm_scaled = test_scaled["load"].values[WINDOW:]
+# inverse-scale trước khi tính MAPE
+y_true_lstm = scaler.inverse_transform(
+    np.c_[y_true_lstm_scaled, np.zeros((len(y_true_lstm_scaled), 3))]
+)[:, 0]
 
-write_log("LSTM Metrics (on scaled test):")
+y_pred_lstm = scaler.inverse_transform(
+    np.c_[lstm_preds.reshape(-1, 1), np.zeros((len(lstm_preds), 3))]
+)[:, 0]
+# metrics
+rmse_lstm, mae_lstm, mape_lstm = evaluate_metrics(
+    y_true_lstm, y_pred_lstm
+)
+
+write_log("LSTM Metrics (one-shot test):")
 write_log(f"RMSE: {lstm_rmse:.4f}")
 write_log(f"MAE : {lstm_mae:.4f}")
-write_log(f"MAPE: {lstm_mape*100:.2f}%\n")
+write_log(f"MAPE: {lstm_mape:.2f}%\n")
 
 
 # ===== LIMIT TEST SIZE FOR FAST BACKTESTING =====
