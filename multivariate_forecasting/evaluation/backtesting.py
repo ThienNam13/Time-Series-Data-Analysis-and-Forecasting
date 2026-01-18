@@ -1,18 +1,23 @@
+# evaluation/backtesting.py
+
 import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import xgboost as xgb
+
 from statsmodels.tsa.api import VAR
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
-from models.lstm_model import build_lstm, create_sequences
 import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.callbacks import EarlyStopping
 
 
-# =========================================================
+# =====================================================
 # METRICS
-# =========================================================
+# =====================================================
 def evaluate_metrics(y_true, y_pred):
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
@@ -20,14 +25,20 @@ def evaluate_metrics(y_true, y_pred):
     return rmse, mae, mape
 
 
+# =====================================================
+# SAVE RESULTS
+# =====================================================
 def save_results(y_true, y_pred, model_name, log_dir):
+
     df = pd.DataFrame({
         "y_true": y_true,
         "y_pred": y_pred
     })
 
-    csv_path = os.path.join(log_dir, f"walk_forward_{model_name}.csv")
-    df.to_csv(csv_path, index=False)
+    df.to_csv(
+        os.path.join(log_dir, f"walk_forward_{model_name}.csv"),
+        index=False
+    )
 
     plt.figure(figsize=(12, 5))
     plt.plot(y_true, label="Actual")
@@ -38,21 +49,35 @@ def save_results(y_true, y_pred, model_name, log_dir):
     plt.savefig(os.path.join(log_dir, f"walk_forward_{model_name}.png"))
     plt.close()
 
-    return csv_path
+
+# =====================================================
+# INVERSE LOAD ONLY
+# =====================================================
+def inverse_scale_load_only(scaler, load_scaled):
+    """
+    Inverse only load using scaler fitted on [load, temp, hum, wind]
+    """
+    dummy = np.zeros((len(load_scaled), scaler.mean_.shape[0]))
+    dummy[:, 0] = load_scaled
+    inv = scaler.inverse_transform(dummy)
+    return inv[:, 0]
 
 
-# =========================================================
-# WALK-FORWARD FOR VAR
-# =========================================================
-def walk_forward_var(train_df, test_df, max_lag=24, log_dir=None):
+# =====================================================
+# WALK-FORWARD VAR
+# =====================================================
+def walk_forward_var(train_df, test_df, scaler, max_lag=24, log_dir=None):
 
     history = train_df.copy()
-    predictions = []
+    preds_scaled = []
+
+    n_features = train_df.shape[1]
 
     model = VAR(train_df)
     lag_order = model.select_order(max_lag).bic
 
     for t in range(len(test_df)):
+
         fitted = VAR(history).fit(lag_order)
 
         forecast = fitted.forecast(
@@ -60,32 +85,42 @@ def walk_forward_var(train_df, test_df, max_lag=24, log_dir=None):
             steps=1
         )
 
-        yhat = forecast[0, history.columns.get_loc("load")]
-        predictions.append(yhat)
+        yhat_scaled = forecast[0, history.columns.get_loc("load")]
+        preds_scaled.append(yhat_scaled)
 
         history = pd.concat([history, test_df.iloc[t:t+1]])
 
         if t % 50 == 0:
             print(f"VAR walk-forward step {t}/{len(test_df)}")
 
-    y_true = test_df["load"].values
-    y_pred = np.array(predictions)
+    y_true_inv = inverse_scale_load_only(scaler, test_df["load"].values)
+    y_pred_inv = inverse_scale_load_only(scaler, np.array(preds_scaled))
 
     if log_dir:
-        save_results(y_true, y_pred, "VAR", log_dir)
+        save_results(y_true_inv, y_pred_inv, "VAR", log_dir)
 
-    return y_true, y_pred
+    return y_true_inv, y_pred_inv
 
 
-# =========================================================
-# WALK-FORWARD FOR XGBOOST
-# =========================================================
-def walk_forward_xgboost(train_df, test_df, params, num_boost_round=300, log_dir=None):
+# =====================================================
+# WALK-FORWARD XGBOOST
+# =====================================================
+def walk_forward_xgboost(
+    train_df,
+    test_df,
+    scaler,
+    params,
+    num_boost_round=100,
+    log_dir=None
+):
 
     history = train_df.copy()
-    predictions = []
+    preds_scaled = []
+
+    n_features = train_df.shape[1]
 
     for t in range(len(test_df)):
+
         X_train = history.drop(columns=["load"])
         y_train = history["load"]
 
@@ -101,57 +136,90 @@ def walk_forward_xgboost(train_df, test_df, params, num_boost_round=300, log_dir
         X_test = test_df.iloc[t:t+1].drop(columns=["load"])
         dtest = xgb.DMatrix(X_test)
 
-        yhat = model.predict(dtest)[0]
-        predictions.append(yhat)
+        yhat_scaled = model.predict(dtest)[0]
+        preds_scaled.append(yhat_scaled)
 
         history = pd.concat([history, test_df.iloc[t:t+1]])
-        
+
         if t % 50 == 0:
             print(f"XGBoost walk-forward step {t}/{len(test_df)}")
 
-    y_true = test_df["load"].values
-    y_pred = np.array(predictions)
+    y_true_inv = inverse_scale_load_only(scaler, test_df["load"].values)
+    y_pred_inv = inverse_scale_load_only(scaler, np.array(preds_scaled))
 
     if log_dir:
-        save_results(y_true, y_pred, "XGBoost", log_dir)
+        save_results(y_true_inv, y_pred_inv, "XGBoost", log_dir)
 
-    return y_true, y_pred
+    return y_true_inv, y_pred_inv
 
 
-# =========================================================
-# WALK-FORWARD FOR LSTM
-# =========================================================
-def walk_forward_lstm(train_data, test_data, window_size=24, epochs=3):
-    history = train_data.copy().values
-    preds = []
+# =====================================================
+# WALK-FORWARD LSTM
+# =====================================================
+def build_lstm(input_shape):
+    model = Sequential([
+        LSTM(64, input_shape=input_shape),
+        Dense(1)
+    ])
+    model.compile(optimizer="adam", loss="mse")
+    return model
 
-    for i in range(len(test_data)):
-        X_train, y_train = create_sequences(history, window_size)
 
-        X_train = X_train.reshape(
-            (X_train.shape[0], X_train.shape[1], X_train.shape[2])
+def walk_forward_lstm(
+    train_df,
+    test_df,
+    scaler,
+    window_size=24,
+    epochs=10,
+    batch_size=64,
+    log_dir=None
+):
+
+    history = train_df.copy()
+    preds_scaled = []
+
+    n_features = train_df.shape[1]
+
+    for t in range(len(test_df)):
+
+        values = history.values
+
+        X_train, y_train = [], []
+        for i in range(window_size, len(values)):
+            X_train.append(values[i - window_size:i])
+            y_train.append(values[i, 0])  # load
+
+        X_train = np.array(X_train)
+        y_train = np.array(y_train)
+
+        model = build_lstm((window_size, n_features))
+
+        early = EarlyStopping(patience=3, restore_best_weights=True)
+
+        model.fit(
+            X_train,
+            y_train,
+            epochs=epochs,
+            batch_size=batch_size,
+            verbose=0,
+            callbacks=[early]
         )
 
-        model = build_lstm((window_size, history.shape[1]))
-        model.fit(X_train, y_train, epochs=epochs, verbose=0)
+        last_window = history.values[-window_size:]
+        X_test = last_window.reshape(1, window_size, n_features)
 
-        last_seq = history[-window_size:]
-        last_seq = last_seq.reshape((1, window_size, history.shape[1]))
+        yhat_scaled = model.predict(X_test, verbose=0)[0, 0]
+        preds_scaled.append(yhat_scaled)
 
-        yhat = model.predict(last_seq, verbose=0)
-        preds.append(yhat[0, 0])
+        history = pd.concat([history, test_df.iloc[t:t+1]])
 
-        # add true observation
-        history = np.vstack([history, test_data.iloc[i].values])
+        if t % 20 == 0:
+            print(f"LSTM walk-forward step {t}/{len(test_df)}")
 
-        if i % 10 == 0:
-            print(f"LSTM walk-forward step {i}/{len(test_data)}")
+    y_true_inv = inverse_scale_load_only(scaler, test_df["load"].values)
+    y_pred_inv = inverse_scale_load_only(scaler, np.array(preds_scaled))
 
-    y_true = test_data["load"].values
-    return y_true, np.array(preds)
+    if log_dir:
+        save_results(y_true_inv, y_pred_inv, "LSTM", log_dir)
 
-def inverse_load_only(preds, scaler, n_features):
-    dummy = np.zeros((len(preds), n_features))
-    dummy[:, 0] = preds
-    inv = scaler.inverse_transform(dummy)
-    return inv[:, 0]
+    return y_true_inv, y_pred_inv

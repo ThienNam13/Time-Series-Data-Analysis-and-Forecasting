@@ -1,74 +1,82 @@
+# models/var_model.py
+
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.stattools import adfuller
-from sklearn.metrics import mean_squared_error, mean_absolute_error
-import numpy as np
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
-def adf_test(series, name="", log_file=None):
+
+# =====================================================
+# ADF TEST
+# =====================================================
+def adf_test(series, name="", verbose=True):
     result = adfuller(series.dropna())
     p_value = result[1]
 
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"ADF Test - {name}: p-value = {p_value:.5f}\n")
+    if verbose:
+        print(f"ADF Test - {name}: p-value = {p_value:.5f}")
 
     return p_value
 
 
-def make_stationary(df, log_file=None):
-    df_diff = df.copy()
+# =====================================================
+# STATIONARITY CHECK & DIFFERENCING
+# =====================================================
+def make_stationary(df, significance=0.05):
+    """
+    Check ADF for each column.
+    If any non-stationary → apply 1st order differencing to all.
+    """
+
     need_diff = False
 
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write("\n=== ADF TEST ===\n")
-
     for col in df.columns:
-        p_value = adf_test(df[col], col, log_file)
-        if p_value > 0.05:
+        p = adf_test(df[col], name=col, verbose=False)
+        if p > significance:
             need_diff = True
+            break
 
     if need_diff:
-        if log_file:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write("\nChuỗi không dừng → Thực hiện differencing bậc 1\n")
         df_diff = df.diff().dropna()
+        return df_diff, True
     else:
-        if log_file:
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write("\nTất cả chuỗi đều dừng\n")
-
-    return df_diff
+        return df.copy(), False
 
 
-def train_var_model(
-    train_df,
-    max_lag=24,
-    criterion="bic",
-    log_file=None
-):
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write("\n=== VAR LAG SELECTION ===\n")
+# =====================================================
+# TRAIN VAR MODEL (ON SCALED DATA)
+# =====================================================
+def train_var_model(train_df, max_lag=24, verbose=True):
+    """
+    Train VAR model on scaled & stationary data
+    """
 
     model = VAR(train_df)
-    lag_order_results = model.select_order(max_lag)
 
-    selected_lag = getattr(lag_order_results, criterion)
+    lag_results = model.select_order(max_lag)
+    selected_lag = lag_results.bic
 
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"Chọn lag = {selected_lag} theo {criterion.upper()}\n")
+    if verbose:
+        print("VAR Lag Selection:")
+        print(lag_results.summary())
+        print(f"Selected lag (BIC): {selected_lag}")
 
-    var_model = model.fit(selected_lag)
+    fitted_model = model.fit(selected_lag)
 
-    return var_model
+    return fitted_model, selected_lag
 
 
-def forecast_var(model, train_df, steps):
+# =====================================================
+# FORECAST VAR (ON SCALED SPACE)
+# =====================================================
+def forecast_var(model, train_df, steps, lag_order):
+    """
+    Forecast future values in scaled space
+    """
+
     forecast = model.forecast(
-        y=train_df.values[-model.k_ar:],
+        y=train_df.values[-lag_order:],
         steps=steps
     )
 
@@ -79,26 +87,42 @@ def forecast_var(model, train_df, steps):
 
     return forecast_df
 
-def evaluate_forecast(
-    y_true,
-    y_pred,
-    log_file=None,
-    model_name="VAR"
-):
+
+# =====================================================
+# INVERSE LOAD ONLY
+# =====================================================
+def inverse_scale_load(scaler, load_scaled, n_features):
     """
-    Đánh giá dự báo bằng RMSE, MAE, MAPE
+    Inverse transform only 'load' column (assumed index 0)
     """
 
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    mae = mean_absolute_error(y_true, y_pred)
-    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    dummy = np.zeros((len(load_scaled), n_features))
+    dummy[:, 0] = load_scaled
+
+    inv = scaler.inverse_transform(dummy)
+    return inv[:, 0]
+
+
+# =====================================================
+# EVALUATION (ON ORIGINAL SCALE)
+# =====================================================
+def evaluate_forecast(
+    y_true_original,
+    y_pred_original,
+    model_name="VAR",
+    log_file=None
+):
+
+    rmse = np.sqrt(mean_squared_error(y_true_original, y_pred_original))
+    mae = mean_absolute_error(y_true_original, y_pred_original)
+    mape = mean_absolute_percentage_error(y_true_original, y_pred_original) * 100
 
     if log_file:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"\n=== {model_name} EVALUATION ===\n")
             f.write(f"RMSE: {rmse:.4f}\n")
             f.write(f"MAE : {mae:.4f}\n")
-            f.write(f"MAPE: {mape:.2f}%\n\n")
+            f.write(f"MAPE: {mape:.2f}%\n")
 
     return {
         "RMSE": rmse,

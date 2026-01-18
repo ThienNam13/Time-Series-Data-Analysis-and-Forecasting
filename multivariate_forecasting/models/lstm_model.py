@@ -1,17 +1,21 @@
+# models/lstm_model.py
+
 import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from tensorflow.keras.callbacks import EarlyStopping
+
 from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
 
+# =====================================================
+# DATASET CREATION
+# =====================================================
 def create_lstm_dataset(data, target_col="load", window_size=24):
     """
-    Convert dataframe to LSTM 3D tensor
-    X shape: (samples, window_size, n_features)
-    y shape: (samples,)
+    data: scaled dataframe
     """
     values = data.values
     target_idx = data.columns.get_loc(target_col)
@@ -24,17 +28,32 @@ def create_lstm_dataset(data, target_col="load", window_size=24):
     return np.array(X), np.array(y)
 
 
+# =====================================================
+# INVERSE LOAD ONLY
+# =====================================================
+def inverse_scale_load(scaler, load_scaled, n_features):
+    dummy = np.zeros((len(load_scaled), n_features))
+    dummy[:, 0] = load_scaled
+    inv = scaler.inverse_transform(dummy)
+    return inv[:, 0]
+
+
+# =====================================================
+# TRAIN + EVALUATE LSTM (STATIC TEST SET)
+# =====================================================
 def train_lstm(
     train_df,
     val_df,
     test_df,
+    scaler,
     log_dir,
     window_size=24,
     batch_size=64,
     epochs=50
 ):
     """
-    Train LSTM model for load forecasting
+    All data must be already scaled
+    Metrics are computed on ORIGINAL scale
     """
 
     # ===== CREATE DATASETS =====
@@ -42,17 +61,14 @@ def train_lstm(
     X_val, y_val = create_lstm_dataset(val_df, window_size=window_size)
     X_test, y_test = create_lstm_dataset(test_df, window_size=window_size)
 
-    # ===== MODEL ARCHITECTURE =====
+    # ===== MODEL =====
     model = Sequential([
         LSTM(64, return_sequences=True, input_shape=(window_size, train_df.shape[1])),
         LSTM(32),
         Dense(1)
     ])
 
-    model.compile(
-        optimizer="adam",
-        loss="mse"
-    )
+    model.compile(optimizer="adam", loss="mse")
 
     # ===== CALLBACK =====
     early_stop = EarlyStopping(
@@ -62,7 +78,7 @@ def train_lstm(
     )
 
     # ===== TRAIN =====
-    history = model.fit(
+    model.fit(
         X_train,
         y_train,
         validation_data=(X_val, y_val),
@@ -72,13 +88,18 @@ def train_lstm(
         verbose=1
     )
 
-    # ===== PREDICT =====
-    y_pred = model.predict(X_test).flatten()
+    # ===== PREDICT (SCALED) =====
+    y_pred_scaled = model.predict(X_test).flatten()
 
-    # ===== METRICS =====
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    mae = mean_absolute_error(y_test, y_pred)
-    mape = mean_absolute_percentage_error(y_test, y_pred)
+    # ===== INVERSE SCALE =====
+    n_features = train_df.shape[1]
+    y_test_inv = inverse_scale_load(scaler, y_test, n_features)
+    y_pred_inv = inverse_scale_load(scaler, y_pred_scaled, n_features)
+
+    # ===== METRICS (ORIGINAL) =====
+    rmse = np.sqrt(mean_squared_error(y_test_inv, y_pred_inv))
+    mae = mean_absolute_error(y_test_inv, y_pred_inv)
+    mape = mean_absolute_percentage_error(y_test_inv, y_pred_inv) * 100
 
     # ===== SAVE MODEL =====
     model_path = os.path.join(log_dir, "lstm_model.h5")
@@ -87,25 +108,9 @@ def train_lstm(
     # ===== SAVE RESULTS =====
     result_path = os.path.join(log_dir, "lstm_results.txt")
     with open(result_path, "w", encoding="utf-8") as f:
-        f.write("=== LSTM RESULTS ===\n")
+        f.write("=== LSTM RESULTS (ORIGINAL SCALE) ===\n")
         f.write(f"RMSE: {rmse:.4f}\n")
-        f.write(f"MAE: {mae:.4f}\n")
-        f.write(f"MAPE: {mape*100:.2f}%\n")
+        f.write(f"MAE : {mae:.4f}\n")
+        f.write(f"MAPE: {mape:.2f}%\n")
 
-    return y_pred, rmse, mae, mape
-
-# HÀM TẠO SEQUENCES ĐỂ DỰ BÁO WALK-FORWARD CHUẨN
-def create_sequences(data, seq_len):
-    X, y = [], []
-    for i in range(len(data) - seq_len):
-        X.append(data[i:i+seq_len])
-        y.append(data[i+seq_len, 0])  # dự báo load
-    return np.array(X), np.array(y)
-# HÀM BUILD MODEL ĐỂ DỰ BÁO WALK-FORWARD CHUẨN
-def build_lstm(input_shape):
-    model = Sequential([
-        LSTM(64, input_shape=input_shape),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    return model
+    return y_pred_inv, rmse, mae, mape

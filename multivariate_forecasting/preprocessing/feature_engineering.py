@@ -1,59 +1,80 @@
-import pandas as pd
-import os
+# preprocessing/feature_engineering.py
 
+import pandas as pd
+
+
+# =====================================================
+# LAG FEATURES (FOR ML & DL)
+# =====================================================
 def create_lag_features(
-    df,
+    data: pd.DataFrame,
     variables,
-    lags=24,
-    log_file=None
+    max_lag=24
 ):
     """
-    Tạo lag features cho danh sách biến
+    Create lag features for given variables
+
+    Example:
+        load_lag_1 ... load_lag_24
+        temperature_lag_1 ... temperature_lag_24
     """
-    df_lag = df.copy()
+
+    df = data.copy()
+
+    lag_features = []
 
     for var in variables:
-        for lag in range(1, lags + 1):
-            df_lag[f"{var}_lag_{lag}"] = df_lag[var].shift(lag)
+        for l in range(1, max_lag + 1):
+            col_name = f"{var}_lag_{l}"
+            df[col_name] = df[var].shift(l)
+            lag_features.append(col_name)
 
-    rows_before = len(df_lag)
-    df_lag = df_lag.dropna()
-    rows_after = len(df_lag)
+    df.dropna(inplace=True)
 
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write("=== LAG FEATURES ===\n")
-            f.write(f"Lag window (L): {lags}\n")
-            f.write(f"Số biến gốc: {len(variables)}\n")
-            f.write(f"Tổng số lag features: {lags * len(variables)}\n")
-            f.write(f"Số dòng bị drop: {rows_before - rows_after}\n\n")
-
-    return df_lag
+    return df, lag_features
 
 
-def create_rolling_features(
-    df,
-    log_file=None
+# =====================================================
+# ROLLING FEATURES (MAINLY FOR XGBOOST)
+# =====================================================
+def create_rolling_features(data: pd.DataFrame):
+    """
+    Create rolling statistics on LOAD variable
+    """
+
+    df = data.copy()
+
+    df["load_roll_mean_6"] = df["load"].rolling(window=6).mean()
+    df["load_roll_std_24"] = df["load"].rolling(window=24).std()
+    df["load_trend_24"] = df["load"] - df["load"].shift(24)
+
+    df.dropna(inplace=True)
+
+    return df
+
+
+# =====================================================
+# FULL FEATURE ENGINEERING PIPELINE (FOR XGBOOST)
+# =====================================================
+def build_ml_features(
+    scaled_data: pd.DataFrame,
+    variables,
+    max_lag=24
 ):
     """
-    Rolling features (CHỈ dùng cho XGBoost)
+    Apply:
+        - lag features
+        - rolling features
+
+    Input must be SCALED data
     """
-    df_roll = df.copy()
 
-    df_roll["load_roll_mean_6"] = df_roll["load"].rolling(window=6).mean()
-    df_roll["load_roll_std_24"] = df_roll["load"].rolling(window=24).std()
-    df_roll["load_trend_24"] = df_roll["load"] - df_roll["load"].shift(24)
+    df_lag, lag_features = create_lag_features(
+        scaled_data,
+        variables=variables,
+        max_lag=max_lag
+    )
 
-    rows_before = len(df_roll)
-    df_roll = df_roll.dropna()
-    rows_after = len(df_roll)
+    df_full = create_rolling_features(df_lag)
 
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write("=== ROLLING FEATURES (XGBOOST ONLY) ===\n")
-            f.write("Rolling mean: 6 giờ\n")
-            f.write("Rolling std: 24 giờ\n")
-            f.write("Load trend: load(t) - load(t-24)\n")
-            f.write(f"Số dòng bị drop: {rows_before - rows_after}\n\n")
-
-    return df_roll
+    return df_full, lag_features
