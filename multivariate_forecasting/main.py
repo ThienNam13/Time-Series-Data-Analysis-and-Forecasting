@@ -167,12 +167,12 @@ y_true_var, y_pred_var = walk_forward_var(
     log_dir=log_dir
 )
 
-rmse, mae, mape = evaluate_metrics(y_true_var, y_pred_var)
+rmse_var, mae_var, mape_var = evaluate_metrics(y_true_var, y_pred_var)
 
 write_log("VAR Walk-forward Metrics:")
-write_log(f"RMSE: {rmse:.4f}")
-write_log(f"MAE : {mae:.4f}")
-write_log(f"MAPE: {mape:.2f}%\n")
+write_log(f"RMSE: {rmse_var:.4f}")
+write_log(f"MAE : {mae_var:.4f}")
+write_log(f"MAPE: {mape_var:.2f}%\n")
 
 
 # ---------- XGBOOST ----------
@@ -187,12 +187,13 @@ y_true_xgb, y_pred_xgb = walk_forward_xgboost(
     log_dir=log_dir
 )
 
-rmse, mae, mape = evaluate_metrics(y_true_xgb, y_pred_xgb)
+rmse_xgb, mae_xgb, mape_xgb = evaluate_metrics(y_true_xgb, y_pred_xgb)
+
 
 write_log("XGBoost Walk-forward Metrics:")
-write_log(f"RMSE: {rmse:.4f}")
-write_log(f"MAE : {mae:.4f}")
-write_log(f"MAPE: {mape:.2f}%\n")
+write_log(f"RMSE: {rmse_xgb:.4f}")
+write_log(f"MAE : {mae_xgb:.4f}")
+write_log(f"MAPE: {mape_xgb:.2f}%\n")
 
 
 # ---------- LSTM ----------
@@ -208,12 +209,43 @@ y_true_lstm, y_pred_lstm = walk_forward_lstm(
     log_dir=log_dir
 )
 
-rmse, mae, mape = evaluate_metrics(y_true_lstm, y_pred_lstm)
+rmse_lstm, mae_lstm, mape_lstm = evaluate_metrics(y_true_lstm, y_pred_lstm)
 
 write_log("LSTM Walk-forward Metrics:")
-write_log(f"RMSE: {rmse:.4f}")
-write_log(f"MAE : {mae:.4f}")
-write_log(f"MAPE: {mape:.2f}%\n")
+write_log(f"RMSE: {rmse_lstm:.4f}")
+write_log(f"MAE : {mae_lstm:.4f}")
+write_log(f"MAPE: {mape_lstm:.2f}%\n")
+
+# =====================================================
+# 10. ĐÁNH GIÁ & SO SÁNH MÔ HÌNH (WALK-FORWARD)
+# =====================================================
+write_log("=== ĐÁNH GIÁ & SO SÁNH MÔ HÌNH (WALK-FORWARD) ===")
+
+write_log("Mục tiêu:")
+write_log("- So sánh các mô hình dựa trên kết quả walk-forward validation.")
+write_log("- Mô phỏng đúng kịch bản dự báo trong thực tế.\n")
+
+write_log("Chỉ số đánh giá:")
+write_log("- RMSE: Độ lệch tổng thể, nhạy với sai số lớn.")
+write_log("- MAE : Sai số tuyệt đối trung bình.")
+write_log("- MAPE: Sai số phần trăm.\n")
+
+write_log("Bảng so sánh kết quả:")
+
+write_log("| Model   | RMSE   | MAE    | MAPE (%) |")
+write_log("|---------|--------|--------|----------|")
+write_log(f"| VAR     | {rmse_var:.2f} | {mae_var:.2f} | {mape_var:.2f} |")
+write_log(f"| XGBoost | {rmse_xgb:.2f} | {mae_xgb:.2f} | {mape_xgb:.2f} |")
+write_log(f"| LSTM    | {rmse_lstm:.2f} | {mae_lstm:.2f} | {mape_lstm:.2f} |")
+
+write_log("\nNhận xét:")
+write_log("- VAR: Mô hình tuyến tính, hiệu quả hạn chế với dữ liệu phi tuyến.")
+write_log("- XGBoost: Hiệu quả cao, học tốt quan hệ phi tuyến.")
+write_log("- LSTM: Dự báo ổn định, nắm bắt phụ thuộc theo thời gian.\n")
+
+write_log("Kết luận:")
+write_log("- Mô hình có RMSE, MAE và MAPE thấp nhất được đánh giá là tốt nhất.")
+write_log("- Kết quả này được dùng để lựa chọn mô hình triển khai.\n")
 
 write_log("=== DONE ===")
 print(f"ALL FINISHED. Logs at: {log_dir}")
