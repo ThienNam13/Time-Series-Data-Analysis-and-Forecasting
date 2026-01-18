@@ -117,22 +117,34 @@ def walk_forward_xgboost(
     history = train_df.copy()
     preds_scaled = []
 
-    n_features = train_df.shape[1]
-
     for t in range(len(test_df)):
 
-        X_train = history.drop(columns=["load"])
-        y_train = history["load"]
+        # ===== split history -> train / val =====
+        split = int(len(history) * 0.9)
+        train_part = history.iloc[:split]
+        val_part   = history.iloc[split:]
+
+        X_train = train_part.drop(columns=["load"])
+        y_train = train_part["load"]
+
+        X_val = val_part.drop(columns=["load"])
+        y_val = val_part["load"]
 
         dtrain = xgb.DMatrix(X_train, label=y_train)
+        dval   = xgb.DMatrix(X_val, label=y_val)
+
+        evals = [(dtrain, "train"), (dval, "val")]
 
         model = xgb.train(
             params=params,
             dtrain=dtrain,
             num_boost_round=num_boost_round,
+            evals=evals,
+            early_stopping_rounds=20,
             verbose_eval=False
         )
 
+        # ===== predict next step =====
         X_test = test_df.iloc[t:t+1].drop(columns=["load"])
         dtest = xgb.DMatrix(X_test)
 

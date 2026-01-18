@@ -47,7 +47,7 @@ def make_stationary(df, significance=0.05):
 # =====================================================
 # TRAIN VAR MODEL (ON SCALED DATA)
 # =====================================================
-def train_var_model(train_df, max_lag=24, verbose=True):
+def train_var_model(train_df, max_lag=24, logger=None):
     """
     Train VAR model on scaled & stationary data
     """
@@ -57,10 +57,33 @@ def train_var_model(train_df, max_lag=24, verbose=True):
     lag_results = model.select_order(max_lag)
     selected_lag = lag_results.bic
 
-    if verbose:
-        print("VAR Lag Selection:")
-        print(lag_results.summary())
-        print(f"Selected lag (BIC): {selected_lag}")
+    if logger:
+        logger("=== ADF TEST (VAR) ===")
+
+    need_diff = False
+    for col in train_df.columns:
+        p = adfuller(train_df[col].dropna())[1]
+        if logger:
+            logger(f"ADF Test - {col}: p-value = {p:.5f}")
+        if p > 0.05:
+            need_diff = True
+
+    if need_diff:
+        train_df = train_df.diff().dropna()
+        if logger:
+            logger("→ Differencing applied (1st order)")
+    else:
+        if logger:
+            logger("→ All series are stationary")
+    
+    if logger:
+        logger("\n=== VAR TRAIN DATA RANGE ===")
+        logger(f"{train_df.index.min()} -> {train_df.index.max()}")
+
+    if logger:
+        logger("\n=== VAR LAG SELECTION ===")
+        logger(str(lag_results.summary()))
+        logger(f"→ Selected lag = {selected_lag} (BIC)")
 
     fitted_model = model.fit(selected_lag)
 

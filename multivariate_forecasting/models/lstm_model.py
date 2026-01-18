@@ -49,7 +49,8 @@ def train_lstm(
     log_dir,
     window_size=24,
     batch_size=64,
-    epochs=50
+    epochs=50,
+    logger=None
 ):
     """
     All data must be already scaled
@@ -76,6 +77,12 @@ def train_lstm(
         patience=10,
         restore_best_weights=True
     )
+
+    if logger:
+        logger("=== LSTM TRAINING ===")
+        logger(f"Train samples: {X_train.shape}")
+        logger(f"Val samples  : {X_val.shape}")
+        logger(f"Epochs: {epochs}, Batch size: {batch_size}")
 
     # ===== TRAIN =====
     model.fit(

@@ -100,12 +100,8 @@ write_log("=== TRAIN MODELS ===")
 
 # ---------- VAR ----------
 write_log("Training VAR model...")
-    # ---- Stationarity for VAR ----
-train_var_input, is_diff = make_stationary(train_scaled)
 
-write_log(f"VAR differencing applied: {is_diff}")
-
-var_model, var_lag = train_var_model(train_var_input, max_lag=24)
+var_model, var_lag = train_var_model(train_scaled, max_lag=24, logger=write_log)
 
 # ---------- XGBOOST ----------
 write_log("Training XGBoost model...")
@@ -123,7 +119,8 @@ xgb_preds, xgb_rmse, xgb_mae, xgb_mape = train_xgboost(
     val_sup,
     test_sup,
     scaler,
-    log_dir
+    log_dir,
+    logger=write_log
 )
 
 # ---------- LSTM ----------
@@ -159,8 +156,8 @@ write_log("=== WALK-FORWARD BACKTESTING ===")
 # ---------- VAR ----------
 write_log("VAR Walk-forward...")
 
-train_var_hist, _ = make_stationary(train_scaled)
-test_var_hist, _ = make_stationary(test_scaled_var_xgb)
+train_var_hist = train_scaled
+test_var_hist = test_scaled_var_xgb
 
 y_true_var, y_pred_var = walk_forward_var(
     train_var_hist,

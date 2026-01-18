@@ -29,7 +29,8 @@ def train_xgboost(
     target_col="load",
     max_depth=6,
     n_estimators=500,
-    learning_rate=0.05
+    learning_rate=0.05,
+    logger=None
 ):
     """
     All data must be:
@@ -68,6 +69,12 @@ def train_xgboost(
         "colsample_bytree": 0.8,
         "eval_metric": "rmse"
     }
+
+    if logger:
+        logger("=== XGBOOST TRAINING ===")
+        logger(f"Train size: {X_train.shape}")
+        logger(f"Val size  : {X_val.shape}")
+        logger(f"Params: depth={max_depth}, n_estimators={n_estimators}, lr={learning_rate}")
 
     # =========================
     # TRAIN WITH EARLY STOPPING
