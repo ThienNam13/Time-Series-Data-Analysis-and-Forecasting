@@ -60,7 +60,7 @@ def split_and_scale_time_series(
     )
 
     # =========================
-    # 4. SAVE SCALER (OPTIONAL)
+    # 4. SAVE SCALER
     # =========================
     if scaler_save_path:
         os.makedirs(os.path.dirname(scaler_save_path), exist_ok=True)
@@ -78,7 +78,7 @@ def inverse_scale_load(scaler, load_scaled, n_features=4):
 
     load_scaled: array-like (n_samples,)
     """
-
+#  Tạo dữ liệu giả từ scale và inverse lại load mà không cần các biến khác
     import numpy as np
 
     dummy = np.zeros((len(load_scaled), n_features))

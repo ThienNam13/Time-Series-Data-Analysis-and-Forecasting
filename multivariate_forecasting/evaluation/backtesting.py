@@ -43,8 +43,13 @@ def save_results(y_true, y_pred, model_name, log_dir):
     plt.figure(figsize=(12, 5))
     plt.plot(y_true, label="Actual")
     plt.plot(y_pred, label="Forecast")
-    plt.legend()
+
+    plt.xlabel("Time Steps (Hours)")
+    plt.ylabel("Electricity Load (kW)")
     plt.title(f"Walk-forward Forecast - {model_name}")
+
+    plt.legend()
+    plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig(os.path.join(log_dir, f"walk_forward_{model_name}.png"))
     plt.close()

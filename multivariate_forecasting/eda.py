@@ -5,12 +5,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
 from preprocessing.data_loader import load_and_prepare_multivariate_data
 
 
 # =====================================================
-# PATH SETUP (CHỐNG LỖI PATH)
+# PATH SETUP
 # =====================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -92,7 +93,10 @@ write_log("")
 # ---- Load over time
 plt.figure(figsize=(12, 5))
 plt.plot(data.index, data["load"])
+plt.xlabel("Time")
+plt.ylabel("Electricity Load (kW)")
 plt.title("Electricity Load Over Time")
+plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig(os.path.join(LOG_DIR, "load_timeseries.png"))
 plt.close()
@@ -100,9 +104,10 @@ plt.close()
 # ---- Load vs Temperature
 plt.figure(figsize=(6, 5))
 plt.scatter(data["temperature"], data["load"], alpha=0.3)
-plt.xlabel("Temperature")
-plt.ylabel("Load")
+plt.xlabel("Temperature (°C)")
+plt.ylabel("Electricity Load (kW)")
 plt.title("Load vs Temperature")
+plt.grid(alpha=0.3)
 plt.tight_layout()
 plt.savefig(os.path.join(LOG_DIR, "load_vs_temp.png"))
 plt.close()
@@ -110,26 +115,54 @@ plt.close()
 # ---- Correlation heatmap
 plt.figure(figsize=(6, 5))
 sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
+plt.xlabel("Variables")
+plt.ylabel("Variables")
 plt.title("Correlation Matrix")
 plt.tight_layout()
 plt.savefig(os.path.join(LOG_DIR, "correlation_matrix.png"))
 plt.close()
 
-# =====================================================
-# SIMPLE ANALYSIS TEXT (CHO BÁO CÁO)
-# =====================================================
-write_log("=== NHẬN XÉT ===")
+# ---- Average load by hour (daily seasonality)
+hourly_avg = data.groupby(data.index.hour)["load"].mean()
 
-max_corr_var = corr["load"].drop("load").abs().idxmax()
+plt.figure(figsize=(8, 4))
+plt.plot(hourly_avg.index, hourly_avg.values, marker="o")
+plt.xlabel("Hour of Day")
+plt.ylabel("Average Load (kW)")
+plt.title("Average Electricity Load by Hour (Daily Pattern)")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(os.path.join(LOG_DIR, "daily_seasonality.png"))
+plt.close()
 
-write_log(f"- Biến có tương quan mạnh nhất với load: {max_corr_var}")
-write_log("- Temperature có tương quan dương khá cao với load.")
-write_log("- Humidity có tương quan âm tương đối rõ.")
-write_log("- Wind speed ảnh hưởng yếu.")
-write_log("- Load thể hiện chu kỳ ngày rất rõ (24h seasonality).")
-write_log("- Có dấu hiệu chu kỳ tuần (weekday vs weekend).")
+# ---- Weekly pattern after detrending
+detrended = data["load"] - data["load"].rolling(24*7).mean()
 
-write_log("\n=== END OF EDA ===")
+weekday_avg_dt = detrended.groupby(data.index.weekday).mean()
 
-print("EDA FINISHED.")
-print(f"Logs & figures saved at: {LOG_DIR}")
+plt.figure(figsize=(8,4))
+plt.plot(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], weekday_avg_dt.values, marker="o")
+plt.xlabel("Day of Week")
+plt.ylabel("Detrended Load")
+plt.title("Weekly Pattern")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(os.path.join(LOG_DIR, "weekly_pattern_detrended.png"))
+plt.close()
+
+# ---- Trend via Moving Average
+window = 24 * 7  # 7-day trend
+
+data["load_ma"] = data["load"].rolling(window=window).mean()
+
+plt.figure(figsize=(12, 5))
+plt.plot(data.index, data["load"], alpha=0.4, label="Original Load")
+plt.plot(data.index, data["load_ma"], color="red", label="7-day Moving Average")
+
+plt.xlabel("Time")
+plt.ylabel("Electricity Load (kW)")
+plt.title("Load Trend (7-day)")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(LOG_DIR, "load_trend_moving_average.png"))
+plt.close()

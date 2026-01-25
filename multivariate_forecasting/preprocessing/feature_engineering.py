@@ -13,10 +13,7 @@ def create_lag_features(
 ):
     """
     Create lag features for given variables
-
-    Example:
         load_lag_1 ... load_lag_24
-        temperature_lag_1 ... temperature_lag_24
     """
 
     df = data.copy()
